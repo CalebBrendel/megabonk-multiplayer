@@ -9,9 +9,8 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <!-- Point this to your Megabonk install (with MelonLoader installed). -->
+  <!-- Adjust this path to point to your actual Steam install if different -->
   <PropertyGroup>
-    <!-- Example on Windows Steam default; change as needed -->
     <GameDir>$(USERPROFILE)\AppData\LocalLow\..\..\..\Program Files (x86)\Steam\steamapps\common\Megabonk</GameDir>
   </PropertyGroup>
 
@@ -32,15 +31,15 @@
       <HintPath>$(GameDir)\MelonLoader\Managed\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- If you use LiteNetLib, drop the DLL under third_party and reference it -->
-    <Reference Include="LiteNetLib">
-      <HintPath>..\..\third_party\LiteNetLib.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pull in all LiteNetLib sources -->
+    <Compile Include="..\..\third_party\LiteNetLib\**\*.cs" />
   </ItemGroup>
 
   <PropertyGroup>
-    <!-- Copy the built DLL right into the Mods folder on build -->
+    <!-- Copy the built DLL into the Mods folder automatically -->
     <PostBuildEvent>
       if not exist "$(GameDir)\Mods" mkdir "$(GameDir)\Mods"
       copy /Y "$(TargetPath)" "$(GameDir)\Mods\$(TargetFileName)"
