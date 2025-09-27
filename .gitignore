@@ -1,0 +1,15 @@
+# Build
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Local
+*.local.json
+
+# Rider
+.idea/
+
+# Unity/Melon local paths
+*.cache
