@@ -1,1 +1,49 @@
-Test
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AssemblyName>MegabonkMultiplayer</AssemblyName>
+    <RootNamespace>MegabonkMultiplayer</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Point this to your Megabonk install (with MelonLoader installed). -->
+  <PropertyGroup>
+    <!-- Example on Windows Steam default; change as needed -->
+    <GameDir>$(USERPROFILE)\AppData\LocalLow\..\..\..\Program Files (x86)\Steam\steamapps\common\Megabonk</GameDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="MelonLoader">
+      <HintPath>$(GameDir)\MelonLoader\MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HarmonyLib">
+      <HintPath>$(GameDir)\MelonLoader\Managed\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- If you use LiteNetLib, drop the DLL under third_party and reference it -->
+    <Reference Include="LiteNetLib">
+      <HintPath>..\..\third_party\LiteNetLib.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Copy the built DLL right into the Mods folder on build -->
+    <PostBuildEvent>
+      if not exist "$(GameDir)\Mods" mkdir "$(GameDir)\Mods"
+      copy /Y "$(TargetPath)" "$(GameDir)\Mods\$(TargetFileName)"
+    </PostBuildEvent>
+  </PropertyGroup>
+</Project>
