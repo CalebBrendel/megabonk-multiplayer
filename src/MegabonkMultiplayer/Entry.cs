@@ -11,13 +11,14 @@ namespace MegabonkMultiplayer
 {
   public class Entry : MelonMod
   {
-    public static bool IsHost = true; // temporary toggle
+    public static bool IsHost = true; // toggle temporarily
 
     public override void OnInitializeMelon()
     {
       MelonLogger.Msg("Megabonk Multiplayer loaded");
-      Net.NetCommon.Init();                 // sockets
-      HarmonyInstance.PatchAll(typeof(PlayerController_Update_Patch)); // only our safe patch
+      Net.NetCommon.Init();
+      // Only patch our safe class so we don’t accidentally scan all types
+      HarmonyInstance.PatchAll(typeof(PlayerController_Update_Patch));
     }
 
     public override void OnUpdate()
@@ -26,30 +27,31 @@ namespace MegabonkMultiplayer
       {
         if (IsHost) Net.Host.Tick();
         else Net.Client.Tick();
+
+        // optional role toggle while testing
+        if (Input.GetKeyDown(KeyCode.F9))
+        {
+          IsHost = !IsHost;
+          MelonLogger.Msg($"Role toggled: {(IsHost ? "HOST" : "CLIENT")}");
+        }
       }
       catch (Exception e) { MelonLogger.Error(e); }
     }
   }
 
-  // SAFE patch that compiles before IL2CPP dumps:
-  // - Finds type by name at runtime
-  // - Patches its "Update" method
   [HarmonyPatch]
   internal static class PlayerController_Update_Patch
   {
-    // TODO: replace "PlayerController" with the exact IL2CPP full name once we dump types,
-    // e.g., "Game.Player.PlayerController"
+    // Replace this later with the fully-qualified IL2CPP type name (e.g., "Game.Player.PlayerController")
     private const string PlayerControllerTypeName = "PlayerController";
     private const string UpdateMethodName = "Update";
 
     static MethodBase TargetMethod()
     {
-      // Try common namespaces too if needed later:
-      // var t = AccessTools.TypeByName("Game.Player.PlayerController") ?? AccessTools.TypeByName(PlayerControllerTypeName);
       var t = AccessTools.TypeByName(PlayerControllerTypeName);
       if (t == null)
       {
-        MelonLogger.Warning($"Type not found: {PlayerControllerTypeName}. The multiplayer patch is idle.");
+        MelonLogger.Warning($"Type not found: {PlayerControllerTypeName}. Multiplayer patch is idle.");
         return null;
       }
       var m = AccessTools.Method(t, UpdateMethodName);
@@ -59,24 +61,17 @@ namespace MegabonkMultiplayer
 
     static void Postfix(object __instance)
     {
-      if (__instance == null) return;
-
-      // Works for IL2CPP components too:
-      var comp = __instance as Component;
-      var tr = comp != null ? comp.transform : null;
+      if (__instance is not Component comp) return;
+      var tr = comp.transform;
       if (tr == null) return;
-
-      var pos = tr.position;
-      var rot = tr.rotation;
 
       if (Entry.IsHost)
       {
-        Net.Host.BroadcastPlayerTransform(pos, rot);
+        Net.Host.BroadcastPlayerTransform(tr.position, tr.rotation);
       }
-      else
+      else if (Net.Client.TryGetHostTransform(out var pos, out var rot))
       {
-        if (Net.Client.TryGetHostTransform(out var hPos, out var hRot))
-          tr.SetPositionAndRotation(hPos, hRot);
+        tr.SetPositionAndRotation(pos, rot);
       }
     }
   }
