@@ -26,7 +26,7 @@
       <HintPath>..\..\lib\managed\MelonLoader.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="HarmonyLib">
+    <Reference Include="0Harmony">
       <HintPath>..\..\lib\managed\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
