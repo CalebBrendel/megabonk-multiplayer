@@ -1,5 +1,4 @@
 using System;
-using System.Net;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
@@ -8,20 +7,21 @@ using UnityEngine;
 
 namespace MegabonkMultiplayer.Net
 {
-  internal static class NetCommon
+  // Shared networking primitives used by Host/Client.
+  public static class NetCommon
   {
-    public static EventBasedNetListener Listener { get; private set; }
-    public static NetManager            Manager  { get; private set; }
-    public static NetPeer               Peer     { get; internal set; }
+    public static EventBasedNetListener Listener { get; private set; } = null!;
+    public static NetManager Manager { get; private set; } = null!;
+    public static NetPeer?  Peer    { get; internal set; }
 
-    private static readonly NetPacketProcessor _proc = new NetPacketProcessor();
-
-    // Simple demo message (position/rotation)
-    internal struct TransformMsg
+    // Simple transform message (must be a reference type for NetPacketProcessor)
+    public class TransformMsg
     {
-      public float px, py, pz;
-      public float rx, ry, rz, rw;
+      public float x, y, z;
+      public float qx, qy, qz, qw;
     }
+
+    public static readonly NetPacketProcessor Processor = new NetPacketProcessor();
 
     public static void Init()
     {
@@ -30,53 +30,64 @@ namespace MegabonkMultiplayer.Net
       Listener = new EventBasedNetListener();
       Manager  = new NetManager(Listener)
       {
+        AutoRecycle = true,
         IPv6Enabled = false,
-        UnconnectedMessagesEnabled = true,
-        AutoRecycle = true
+        UnconnectedMessagesEnabled = false
       };
 
-      // Wire up events (signatures as of LiteNetLib 1.x):
-      Listener.PeerConnectedEvent += peer =>
+      // Accept with a light "key" so random LAN noise doesn't connect.
+      Listener.ConnectionRequestEvent += req =>
       {
-        MelonLogger.Msg($"[Net] Peer connected: {peer.RemoteEndPoint}");
-        Peer = peer;
+        // Accept everyone for now. You can gate with req.Data if you want a key.
+        req.AcceptIfKey(null);
       };
 
-      Listener.PeerDisconnectedEvent += (peer, info) =>
+      Listener.PeerConnectedEvent += p =>
       {
-        MelonLogger.Msg($"[Net] Peer disconnected: {peer.RemoteEndPoint} ({info.Reason})");
-        if (Peer == peer) Peer = null;
+        Peer = p;
+        MelonLogger.Msg($"[Net] Connected: {p.EndPoint}");
       };
 
-      // NOTE: This delegate is (NetPeer, NetPacketReader, DeliveryMethod)
-      Listener.NetworkReceiveEvent += (peer, reader, method) =>
+      Listener.PeerDisconnectedEvent += (p, reason) =>
+      {
+        if (Peer == p) Peer = null;
+        MelonLogger.Msg($"[Net] Disconnected: {reason}");
+      };
+
+      // NOTE: Old LiteNetLib uses NetDataReader + 4 params here.
+      Listener.NetworkReceiveEvent += (peer, reader, channel, method) =>
       {
         try
         {
-          _proc.ReadAllPackets(reader);
+          Processor.ReadAllPackets(reader);
         }
         catch (Exception ex)
         {
-          MelonLogger.Warning($"[Net] ReadAllPackets error: {ex}");
-        }
-        finally
-        {
-          reader.Recycle();
+          MelonLogger.Warning($"[Net] ReadAllPackets error: {ex.Message}");
         }
       };
 
-      // Optional: log unconnected (pings/NAT punch etc.)
-      Listener.NetworkReceiveUnconnectedEvent += (remoteEndPoint, reader, messageType) =>
+      // Register message + handlers
+      Processor.RegisterReusable<TransformMsg>();
+      Processor.SubscribeReusable<TransformMsg>((peer, msg) =>
       {
-        // no-op
-      };
+        var pos = new Vector3(msg.x, msg.y, msg.z);
+        var rot = new Quaternion(msg.qx, msg.qy, msg.qz, msg.qw);
+        Client.ReceiveHostTransform(pos, rot);
+      });
+    }
 
-      // Register handlers
-      _proc.RegisterNestedType((w, v) => w.Put(v), r => r.GetVector3());
-      _proc.RegisterNestedType((w, q) => { w.Put(q.x); w.Put(q.y); w.Put(q.z); w.Put(q.w); },
-                               r => new Quaternion(r.GetFloat(), r.GetFloat(), r.GetFloat(), r.GetFloat()));
+    public static void StartIfNeeded()
+    {
+      if (!Manager.IsRunning)
+        Manager.Start();
+    }
 
-      _proc.SubscribeReusable<TransformMsg>(OnTransformMsg);
+    public static void StopIfRunning()
+    {
+      if (Manager.IsRunning)
+        Manager.Stop();
+      Peer = null;
     }
 
     public static void Poll()
@@ -84,96 +95,15 @@ namespace MegabonkMultiplayer.Net
       Manager?.PollEvents();
     }
 
-    private static void OnTransformMsg(TransformMsg m, NetPeer from)
+    public static void SendTo(NetPeer peer, Transform tf)
     {
-      // Client side: store “host” transform for application by your postfix
-      var pos = new Vector3(m.px, m.py, m.pz);
-      var rot = new Quaternion(m.rx, m.ry, m.rz, m.rw);
-      Client.SetHostTransform(pos, rot);
-    }
-
-    internal static void SendTransform(NetPeer to, Vector3 pos, Quaternion rot, DeliveryMethod method = DeliveryMethod.Sequenced)
-    {
-      var msg = new TransformMsg
+      var w = new NetDataWriter();
+      Processor.Write(w, new TransformMsg
       {
-        px = pos.x, py = pos.y, pz = pos.z,
-        rx = rot.x, ry = rot.y, rz = rot.z, rw = rot.w
-      };
-      var writer = new NetDataWriter();
-      _proc.Write(writer, msg);
-      to.Send(writer, method);
-    }
-
-    // ---------------- Host ----------------
-    internal static class Host
-    {
-      private static bool _isUp;
-
-      public static void Start(int port)
-      {
-        if (_isUp) return;
-
-        if (!Manager.IsRunning)
-          Manager.Start(port);
-
-        _isUp = true;
-        MelonLogger.Msg($"[Host] Listening on UDP {port}");
-      }
-
-      public static void Tick()
-      {
-        // nothing special; Poll() in Entry.OnUpdate handles events
-      }
-
-      public static void BroadcastPlayerTransform(Vector3 pos, Quaternion rot)
-      {
-        if (!Manager.IsRunning) return;
-
-        for (int i = 0; i < Manager.ConnectedPeerList.Count; i++)
-          NetCommon.SendTransform(Manager.ConnectedPeerList[i], pos, rot);
-      }
-    }
-
-    // ---------------- Client ----------------
-    internal static class Client
-    {
-      private static Vector3    _hostPos;
-      private static Quaternion _hostRot;
-      private static bool       _haveHost;
-
-      public static void Connect(string ip, int port)
-      {
-        if (!Manager.IsRunning)
-          Manager.Start();
-
-        Peer = Manager.Connect(IPAddress.TryParse(ip, out _) ? ip : Dns.GetHostEntry(ip).AddressList[0].ToString(), port, string.Empty);
-        MelonLogger.Msg($"[Client] Connecting to {ip}:{port} ...");
-      }
-
-      internal static void SetHostTransform(Vector3 pos, Quaternion rot)
-      {
-        _hostPos = pos;
-        _hostRot = rot;
-        _haveHost = true;
-      }
-
-      public static bool TryGetHostTransform(out Vector3 pos, out Quaternion rot)
-      {
-        pos = _hostPos; rot = _hostRot;
-        return _haveHost;
-      }
-
-      public static void Tick()
-      {
-        // nothing special; Poll() in Entry.OnUpdate handles events
-      }
-
-      // For host-to-client direct send (unused here; kept for parity)
-      public static void SendToHost(Vector3 pos, Quaternion rot)
-      {
-        if (Peer == null) return;
-        NetCommon.SendTransform(Peer, pos, rot);
-      }
+        x = tf.position.x, y = tf.position.y, z = tf.position.z,
+        qx = tf.rotation.x, qy = tf.rotation.y, qz = tf.rotation.z, qw = tf.rotation.w
+      });
+      peer.Send(w, DeliveryMethod.Unreliable);
     }
   }
 }
