@@ -7,64 +7,55 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Optional: turn on deterministic builds and nicer pdbs -->
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
 
-  <!-- Point to your real Megabonk install; adjust if your Steam library is elsewhere -->
-  <PropertyGroup>
-    <GameDir>C:\Program Files (x86)\Steam\steamapps\common\Megabonk</GameDir>
-  </PropertyGroup>
+  <!--
+    Local references (recommended):
+    Place these files in repo at: lib/managed/
+      - MelonLoader.dll                (from game: MelonLoader/MelonLoader.dll)
+      - 0Harmony.dll                   (from game: MelonLoader/Managed/net35/0Harmony.dll)
+      - UnityEngine.CoreModule.dll     (from Unity Editor 2023.2.20f1)
+      - UnityEngine.InputLegacyModule.dll (from Unity Editor 2023.2.20f1)
+  -->
+  <ItemGroup>
+    <Reference Include="MelonLoader">
+      <HintPath>..\..\lib\managed\MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HarmonyLib">
+      <HintPath>..\..\lib\managed\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
 
-  <!-- Prefer the game install if it exists; otherwise fall back to repo-local copies in lib\managed -->
-  <Choose>
-    <When Condition="Exists('$(GameDir)\MelonLoader\MelonLoader.dll')">
-      <ItemGroup>
-        <Reference Include="MelonLoader">
-          <HintPath>$(GameDir)\MelonLoader\MelonLoader.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-        <Reference Include="HarmonyLib">
-          <HintPath>$(GameDir)\MelonLoader\Managed\0Harmony.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-        <Reference Include="UnityEngine">
-          <HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-        <Reference Include="UnityEngine.CoreModule">
-          <HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.CoreModule.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-      </ItemGroup>
-    </When>
-    <Otherwise>
-      <ItemGroup>
-        <Reference Include="MelonLoader">
-          <HintPath>..\..\lib\managed\MelonLoader.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-        <Reference Include="HarmonyLib">
-          <HintPath>..\..\lib\managed\0Harmony.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-        <Reference Include="UnityEngine">
-          <HintPath>..\..\lib\managed\UnityEngine.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-        <Reference Include="UnityEngine.CoreModule">
-          <HintPath>..\..\lib\managed\UnityEngine.CoreModule.dll</HintPath>
-          <Private>false</Private>
-        </Reference>
-      </ItemGroup>
-    </Otherwise>
-  </Choose>
+    <!-- Unity modules: add more only if the compiler asks for them -->
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\lib\managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>..\..\lib\managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
 
-  <!-- Pull in ALL LiteNetLib sources (including Layers/) -->
+  <!-- Pull in ALL LiteNetLib sources (including Utils/ and Layers/) -->
   <ItemGroup>
     <Compile Include="..\..\third_party\LiteNetLib\**\*.cs" />
   </ItemGroup>
 
-  <!-- Windows-only: copy the built DLL into the game's Mods folder -->
-  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+  <!--
+    OPTIONAL: Set GameDir to auto-copy the built DLL into Mods on Windows.
+    If you don't set this, nothing is copied (you can copy manually).
+    Example:
+      <PropertyGroup>
+        <GameDir>C:\Program Files (x86)\Steam\steamapps\common\Megabonk</GameDir>
+      </PropertyGroup>
+  -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT' and '$(GameDir)' != '' and Exists('$(GameDir)')">
     <PostBuildEvent>
       if not exist "$(GameDir)\Mods" mkdir "$(GameDir)\Mods"
       copy /Y "$(TargetPath)" "$(GameDir)\Mods\$(TargetFileName)"
