@@ -16,9 +16,9 @@
   <!--
     Local references (recommended):
     Place these files in repo at: lib/managed/
-      - MelonLoader.dll                (from game: MelonLoader/MelonLoader.dll)
-      - 0Harmony.dll                   (from game: MelonLoader/Managed/net35/0Harmony.dll)
-      - UnityEngine.CoreModule.dll     (from Unity Editor 2023.2.20f1)
+      - MelonLoader.dll                  (from game: MelonLoader/MelonLoader.dll)
+      - 0Harmony.dll                     (from game: MelonLoader/Managed/net35/0Harmony.dll)
+      - UnityEngine.CoreModule.dll       (from Unity Editor 2023.2.20f1)
       - UnityEngine.InputLegacyModule.dll (from Unity Editor 2023.2.20f1)
   -->
   <ItemGroup>
