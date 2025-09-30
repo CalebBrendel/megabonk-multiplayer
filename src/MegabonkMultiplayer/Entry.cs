@@ -1,5 +1,5 @@
 using MelonLoader;
-using HarmonyLib;
+// (intentionally not using 'using HarmonyLib;' to avoid namespace/type collisions)
 using System;
 using System.Reflection;
 using UnityEngine;
@@ -15,7 +15,7 @@ namespace MegabonkMultiplayer
     private const string PlayerControllerTypeName = "PlayerController"; // e.g. "Game.Player.PlayerController"
     private const string PlayerTickMethodName     = "Update";           // e.g. "FixedUpdate" or "Tick"
 
-    private Harmony _harmony;
+    private HarmonyLib.Harmony _harmony;
     private bool _patchTried, _patchOK;
 
     // Simple UI state
@@ -28,7 +28,7 @@ namespace MegabonkMultiplayer
     public override void OnInitializeMelon()
     {
       MelonLogger.Msg("Megabonk Multiplayer loaded");
-      _harmony = new Harmony("Megabonk_Multiplayer");
+      _harmony = new HarmonyLib.Harmony("Megabonk_Multiplayer");
 
       // Init networking core (but don't start host/client yet)
       Net.NetCommon.Init();
@@ -63,7 +63,7 @@ namespace MegabonkMultiplayer
           return;
         }
 
-        var target = AccessTools.Method(qualified);
+        var target = HarmonyLib.AccessTools.Method(qualified);
         if (target == null)
         {
           MelonLogger.Warning($"Patch target not found: {qualified}. The mod will run idle. " +
@@ -71,8 +71,9 @@ namespace MegabonkMultiplayer
           return;
         }
 
-        var postfix = new HarmonyMethod(typeof(Entry).GetMethod(nameof(PlayerTick_Postfix),
-                          BindingFlags.Static | BindingFlags.NonPublic));
+        var postfix = new HarmonyLib.HarmonyMethod(
+            typeof(Entry).GetMethod(nameof(PlayerTick_Postfix),
+            BindingFlags.Static | BindingFlags.NonPublic));
 
         _harmony.Patch(target, postfix: postfix);
         _patchOK = true;
@@ -118,8 +119,8 @@ namespace MegabonkMultiplayer
           {
             if (IsHost)
               MegabonkMultiplayer.Net.Host.BroadcastPlayerTransform(tf.position, tf.rotation);
-            else if (MegabonkMultiplayer.Net.Client.TryGetHostTransform(out var hPos, out var hRot))
-              tf.SetPositionAndRotation(hPos, hRot);
+            else if (MegabonkMultiplayer.Net.Client.TryGetHostTransform(out var hPos2, out var hRot2))
+              tf.SetPositionAndRotation(hPos2, hRot2);
           }
         }
       }
