@@ -1,15 +1,36 @@
-# Build
+# Build artifacts
 bin/
 obj/
+[Bb]uild/
+[Ll]ogs/
 .vs/
 *.user
 *.suo
 
-# Local
-*.local.json
+# OS cruft
+.DS_Store
+Thumbs.db
 
-# Rider
+# IDE settings
 .idea/
+.vscode/
 
-# Unity/Melon local paths
-*.cache
+# NuGet & caches
+*.nupkg
+*.snupkg
+.nuget/
+*.nuget.props
+*.nuget.targets
+
+# Symbols (optional—keep if you want to debug)
+*.pdb
+*.mdb
+
+# Local reference DLLs (keep the minimal set so others can build)
+lib/managed/*
+!lib/managed/MelonLoader.dll
+!lib/managed/0Harmony.dll
+!lib/managed/UnityEngine.CoreModule.dll
+
+# Third-party source (we do keep LiteNetLib sources)
+# (If you add prebuilt DLLs later, whitelist as needed)
