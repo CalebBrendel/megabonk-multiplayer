@@ -6,22 +6,19 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <Deterministic>true</Deterministic>
     <DebugType>portable</DebugType>
-    <PlatformTarget>x64</PlatformTarget>
-
-    <!-- Stop SDK from auto-including *.cs so we can control includes -->
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Avoid duplicate Compile items since we include LiteNetLib sources explicitly -->
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
 
-  <!-- Local refs (put DLLs in lib/managed) -->
   <ItemGroup>
     <Reference Include="MelonLoader">
       <HintPath>..\..\lib\managed\MelonLoader.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- Must match assembly name inside the dll -->
-    <Reference Include="0Harmony">
+    <Reference Include="HarmonyLib">
       <HintPath>..\..\lib\managed\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
@@ -40,29 +37,18 @@
     </Reference>
   </ItemGroup>
 
-  <!-- Explicitly include ONLY the sources we want -->
+  <!-- Pull in ALL LiteNetLib sources (the ones you already vendored under third_party/LiteNetLib) -->
   <ItemGroup>
-    <!-- Your code -->
-    <Compile Include="Entry.cs" />
-    <Compile Include="Net\NetCommon.cs" />
-    <Compile Include="Patches\Lifecycle_Patch.cs" />
-    <Compile Include="Patches\PlayerController_Patch.cs" />
-    <Compile Include="Patches\EnemyManager_Patch.cs" />
-
-    <!-- LiteNetLib sources (Utils/, Layers/, etc.) -->
     <Compile Include="..\..\third_party\LiteNetLib\**\*.cs" />
   </ItemGroup>
 
-  <!-- Optional: auto-copy to Mods after build (enable by setting GameDir) -->
-  <!--
-  <PropertyGroup>
-    <GameDir>C:\Program Files (x86)\Steam\steamapps\common\Megabonk</GameDir>
-  </PropertyGroup>
+  <!-- Normal project sources are picked up implicitly; no explicit <Compile> includes for them. -->
+
+  <!-- Optional: auto-copy built DLL into Mods (Windows) if you set GameDir -->
   <PropertyGroup Condition="'$(OS)' == 'Windows_NT' and '$(GameDir)' != '' and Exists('$(GameDir)')">
     <PostBuildEvent>
       if not exist "$(GameDir)\Mods" mkdir "$(GameDir)\Mods"
       copy /Y "$(TargetPath)" "$(GameDir)\Mods\$(TargetFileName)"
     </PostBuildEvent>
   </PropertyGroup>
-  -->
 </Project>
