@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<PropertyGroup>
+<Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+<Platform>AnyCPU</Platform>
+<ProjectGuid>{F1C64F3E-7B8A-4B17-9D7B-9B6E1C3B9E21}</ProjectGuid>
+<OutputType>Library</OutputType>
+<RootNamespace>Megabonk.Multiplayer</RootNamespace>
+<AssemblyName>Megabonk.Multiplayer</AssemblyName>
+<TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+<LangVersion>latest</LangVersion>
+<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+<Nullable>disable</Nullable>
+</PropertyGroup>
+
+
+<ItemGroup>
+<Compile Include="MegabonkMultiplayer.cs" />
+<Compile Include="SteamLobby.cs" />
+<Compile Include="Net\NetCommon.cs" />
+<Compile Include="Net\MessageTypes.cs" />
+<Compile Include="Net\NetHost.cs" />
+<Compile Include="Net\NetClient.cs" />
+<Compile Include="HarmonyPatches\GameHooks.cs" />
+</ItemGroup>
+
+
+<ItemGroup>
+<Reference Include="MelonLoader">
+<HintPath>$(GameDir)\MelonLoader\MelonLoader.dll</HintPath>
+<Private>false</Private>
+</Reference>
+<Reference Include="0Harmony">
+<HintPath>$(GameDir)\MelonLoader\Managed\0Harmony.dll</HintPath>
+<Private>false</Private>
+</Reference>
+<Reference Include="UnityEngine.CoreModule">
+<HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.CoreModule.dll</HintPath>
+<Private>false</Private>
+</Reference>
+<Reference Include="UnityEngine">
+<HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.dll</HintPath>
+<Private>false</Private>
+</Reference>
+<Reference Include="Steamworks.NET">
+<HintPath>$(SolutionDir)\libs\Steamworks.NET.dll</HintPath>
+</Reference>
+<Reference Include="System" />
+<Reference Include="System.Core" />
+</ItemGroup>
+
+
+<PropertyGroup>
+<GameDir Condition=" '$(GameDir)' == '' ">C:\\Program Files\\Steam\\steamapps\\common\\Megabonk</GameDir>
+</PropertyGroup>
+
+
+<Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
