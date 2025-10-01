@@ -10,13 +10,12 @@ namespace Megabonk.Multiplayer.Debugging
         public static void Dump(int maxDepth = 3)
         {
             var scn = SceneManager.GetActiveScene();
-            var roots = scn.GetRootGameObjects();
+            var roots = GetSceneRootsSafe(scn);
             MelonLogger.Msg($"[DUMP] Scene '{scn.name}' roots={roots.Length}");
+
             for (int i = 0; i < roots.Length; i++)
-            {
-                var go = roots[i];
-                DumpTransform(go.transform, 0, maxDepth);
-            }
+                DumpTransform(roots[i].transform, 0, maxDepth);
+
             LogCameraChain();
         }
 
@@ -78,6 +77,41 @@ namespace Megabonk.Multiplayer.Debugging
             for (var x = t; x != null; x = x.parent) stack.Add(x);
             for (int i = stack.Count - 1; i >= 0; i--) sb.Append('/').Append(stack[i].name);
             return sb.ToString();
+        }
+
+        // Same IL2CPP-safe root enumeration as in GameHooks
+        static GameObject[] GetSceneRootsSafe(Scene scn)
+        {
+            try
+            {
+                var all = Object.FindObjectsOfType<Transform>();
+                int count = 0;
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var t = all[i];
+                    if (t == null) continue;
+                    var go = t.gameObject;
+                    if (t.parent == null && go.scene.handle == scn.handle) count++;
+                }
+                if (count == 0) return System.Array.Empty<GameObject>();
+
+                var result = new GameObject[count];
+                int idx = 0;
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var t = all[i];
+                    if (t == null) continue;
+                    var go = t.gameObject;
+                    if (t.parent == null && go.scene.handle == scn.handle)
+                        result[idx++] = go;
+                }
+                return result;
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[DUMP] GetSceneRootsSafe failed: {ex.GetType().Name}: {ex.Message}");
+                return System.Array.Empty<GameObject>();
+            }
         }
     }
 }
