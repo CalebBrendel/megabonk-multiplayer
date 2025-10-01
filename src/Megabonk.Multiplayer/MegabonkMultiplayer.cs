@@ -1,13 +1,10 @@
-// Melon entry + Steam init + hotkeys
+// Melon entry + Steam init + hotkeys + safety guards
 using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
-// You can keep this if you want, but the code below fully-qualifies anyway:
-// using Steamworks;
-
 using Megabonk.Multiplayer.Net;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.0", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.1", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -26,9 +23,24 @@ namespace Megabonk.Multiplayer
             _harmony.PatchAll();
 
             InitSteam();
-            SteamLobby.OnLobbyEntered += LobbyEntered;
-            SteamLobby.OnLobbyLeft += LobbyLeft;
-            SteamLobby.Init();
+
+            if (_steamOk)
+            {
+                SteamLobby.OnLobbyEntered += LobbyEntered;
+                SteamLobby.OnLobbyLeft += LobbyLeft;
+                SteamLobby.Init();
+
+                // Optional diagnostics — uncomment if needed:
+                // try {
+                //     var asm = typeof(Steamworks.SteamAPI).Assembly;
+                //     MelonLogger.Msg($"Steamworks.NET runtime: {asm.FullName}");
+                //     MelonLogger.Msg($"Steamworks.NET location: {asm.Location}");
+                // } catch (System.Exception ex) { MelonLogger.Error(ex.ToString()); }
+            }
+            else
+            {
+                MelonLogger.Error("SteamAPI.Init failed; multiplayer disabled this session.");
+            }
         }
 
         private void InitSteam()
@@ -42,13 +54,14 @@ namespace Megabonk.Multiplayer
             if (!_steamOk)
             {
                 MelonLogger.Error("SteamAPI.Init failed. Is Steam running / app owned?");
-                return;
             }
         }
 
         public override void OnUpdate()
         {
-            if (_steamOk) Steamworks.SteamAPI.RunCallbacks();
+            if (!_steamOk) return;
+
+            Steamworks.SteamAPI.RunCallbacks();
 
             if (Input.GetKeyDown(KeyCode.F9))  SteamLobby.HostLobby();
             if (Input.GetKeyDown(KeyCode.F10)) SteamLobby.ShowInviteOverlay();
@@ -59,8 +72,7 @@ namespace Megabonk.Multiplayer
                 else NetClient.Instance?.ToggleReady();
             }
 
-            if (IsHost) NetHost.Instance?.Tick();
-            else NetClient.Instance?.Tick();
+            if (IsHost) NetHost.Instance?.Tick(); else NetClient.Instance?.Tick();
         }
 
         public override void OnDeinitializeMelon()
@@ -72,12 +84,10 @@ namespace Megabonk.Multiplayer
             _harmony?.UnpatchSelf();
         }
 
-        // Fully-qualified Steamworks types here so no 'using Steamworks' is required.
         private void LobbyEntered(bool isHost, Steamworks.CSteamID lobby, Steamworks.CSteamID hostId)
         {
             MelonLogger.Msg($"Lobby entered: {lobby}, host={hostId}");
-            if (isHost) NetHost.StartListening();
-            else NetClient.ConnectToHost(hostId);
+            if (isHost) NetHost.StartListening(); else NetClient.ConnectToHost(hostId);
         }
 
         private void LobbyLeft()
