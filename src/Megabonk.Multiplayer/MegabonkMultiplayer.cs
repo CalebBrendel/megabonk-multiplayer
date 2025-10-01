@@ -1,10 +1,10 @@
 using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.SceneManagement; // for scene name on F6
+using UnityEngine.SceneManagement;
 using Megabonk.Multiplayer.Net;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.3", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.3", "Caleb Brendel")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -50,7 +50,6 @@ namespace Megabonk.Multiplayer
                 return;
             }
 
-            // Enable Steam Datagram Relay so P2P works behind NAT/firewalls.
             Steamworks.SteamNetworkingUtils.InitRelayNetworkAccess();
             MelonLogger.Msg("SteamNetworking: Relay network access requested.");
         }
@@ -65,7 +64,7 @@ namespace Megabonk.Multiplayer
             if (Input.GetKeyDown(KeyCode.F10)) SteamLobby.ShowInviteOverlay();
             if (Input.GetKeyDown(KeyCode.F11)) SteamLobby.LeaveLobby();
 
-            // Start co-op: host broadcasts current scene to clients
+            // Host: broadcast current scene to clients
             if (Input.GetKeyDown(KeyCode.F6) && IsHost && NetHost.Instance != null)
             {
                 var scene = SceneManager.GetActiveScene().name;
