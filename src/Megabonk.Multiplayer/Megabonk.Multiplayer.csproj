@@ -35,13 +35,7 @@
 
   <!-- Source files -->
   <ItemGroup>
-    <Compile Include="MegabonkMultiplayer.cs" />
-    <Compile Include="SteamLobby.cs" />
-    <Compile Include="Net\NetCommon.cs" />
-    <Compile Include="Net\MessageTypes.cs" />
-    <Compile Include="Net\NetHost.cs" />
-    <Compile Include="Net\NetClient.cs" />
-    <Compile Include="HarmonyPatches\GameHooks.cs" />
+    <Compile Include="**\*.cs" Exclude="bin\**\*;obj\**\*" />
   </ItemGroup>
 
   <!-- Compute repo paths -->
