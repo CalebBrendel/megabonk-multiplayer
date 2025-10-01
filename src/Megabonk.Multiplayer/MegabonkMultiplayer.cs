@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 using Megabonk.Multiplayer.HarmonyPatches; // GameHooks
 using Megabonk.Multiplayer.Net;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.1", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.2", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -15,7 +15,6 @@ namespace Megabonk.Multiplayer
         private static bool _steamOk;
         private HarmonyLib.Harmony _harmony;
 
-        // NEW: simple scene-change tracker (avoids UnityAction<T1,T2> AOT issues)
         private static int _lastSceneIndex = -1;
         private static string _lastSceneName = null;
 
@@ -35,7 +34,6 @@ namespace Megabonk.Multiplayer
                 SteamLobby.OnLobbyLeft += LobbyLeft;
                 SteamLobby.Init();
 
-                // kick an initial bind attempt on first scene we detect in OnUpdate
                 _lastSceneIndex = -1;
                 _lastSceneName = null;
             }
@@ -69,13 +67,12 @@ namespace Megabonk.Multiplayer
 
             Steamworks.SteamAPI.RunCallbacks();
 
-            // --- SCENE CHANGE POLL (replaces SceneManager.sceneLoaded subscription) ---
+            // Scene change poll (no UnityAction<T1,T2>)
             var scn = SceneManager.GetActiveScene();
             if (scn.buildIndex != _lastSceneIndex || scn.name != _lastSceneName)
             {
                 _lastSceneIndex = scn.buildIndex;
                 _lastSceneName = scn.name;
-                // Call our scene-load hook manually
                 GameHooks.OnSceneLoaded(scn, LoadSceneMode.Single);
             }
 
@@ -84,7 +81,7 @@ namespace Megabonk.Multiplayer
             if (Input.GetKeyDown(KeyCode.F10)) SteamLobby.ShowInviteOverlay();
             if (Input.GetKeyDown(KeyCode.F11)) SteamLobby.LeaveLobby();
 
-            // Host broadcasts current scene to clients
+            // Host: broadcast current scene to clients
             if (Input.GetKeyDown(KeyCode.F6) && IsHost && NetHost.Instance != null)
             {
                 var scene = scn.name;
@@ -92,7 +89,7 @@ namespace Megabonk.Multiplayer
                 NetHost.Instance.BroadcastLoadLevel(scene);
             }
 
-            // Manual player bind
+            // Manual player bind if auto-bind missed it
             if (Input.GetKeyDown(KeyCode.F8))
             {
                 var ok = GameHooks.TryAutoBind(verbose: true);
