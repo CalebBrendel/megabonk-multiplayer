@@ -7,22 +7,20 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Deterministic>true</Deterministic>
-    <DebugType>portable"
+    <DebugType>portable</DebugType>
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
-  <!-- Local references you placed in lib/managed -->
+  <!-- Put these DLLs in lib/managed/ -->
   <ItemGroup>
     <Reference Include="MelonLoader">
       <HintPath>..\..\lib\managed\MelonLoader.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="HarmonyLib">
+    <Reference Include="0Harmony">
       <HintPath>..\..\lib\managed\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-
-    <!-- Unity modules -->
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>..\..\lib\managed\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
@@ -31,14 +29,13 @@
       <HintPath>..\..\lib\managed\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- NEW: IMGUI so GUI/GUILayout resolve -->
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>..\..\lib\managed\UnityEngine.IMGUIModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
 
-  <!-- Pull in ALL LiteNetLib sources (including Layers/ and Utils/) -->
+  <!-- Include LiteNetLib sources (Utils/, Layers/, etc.) -->
   <ItemGroup>
     <Compile Include="..\..\third_party\LiteNetLib\**\*.cs" />
   </ItemGroup>
@@ -47,14 +44,12 @@
   <ItemGroup>
     <Compile Include="Entry.cs" />
     <Compile Include="Net\NetCommon.cs" />
-    <Compile Include="Net\Client.cs" />
-    <Compile Include="Net\Host.cs" />
     <Compile Include="Patches\Lifecycle_Patch.cs" />
     <Compile Include="Patches\PlayerController_Patch.cs" />
     <Compile Include="Patches\EnemyManager_Patch.cs" />
   </ItemGroup>
 
-  <!-- Optional auto-copy to Mods after build (Windows only): set GameDir before building -->
+  <!-- Optional post-build copy to Mods (set GameDir to enable) -->
   <!--
   <PropertyGroup>
     <GameDir>C:\Program Files (x86)\Steam\steamapps\common\Megabonk</GameDir>
