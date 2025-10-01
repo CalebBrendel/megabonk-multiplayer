@@ -18,10 +18,17 @@ namespace Megabonk.Multiplayer
 
         public static void Init()
         {
-            if (!SteamAPI.IsSteamRunning()) return;
+            if (!SteamAPI.IsSteamRunning())
+            {
+                Debug.LogError("SteamLobby.Init: Steam is not running or SteamAPI not initialized.");
+                return;
+            }
+
             _onLobbyJoinRequested = Callback<GameLobbyJoinRequested_t>.Create(OnLobbyJoinRequested);
-            _onLobbyEntered = Callback<LobbyEnter_t>.Create(OnLobbyEnteredCb);
-            _onLobbyCreated = CallResult<LobbyCreated_t>.Create(OnLobbyCreatedCb);
+            _onLobbyEntered       = Callback<LobbyEnter_t>.Create(OnLobbyEnteredCb);
+            _onLobbyCreated       = CallResult<LobbyCreated_t>.Create(OnLobbyCreatedCb);
+
+            Debug.Log($"SteamLobby.Init: callbacks ready? created={_onLobbyCreated != null}, joinReq={_onLobbyJoinRequested != null}, entered={_onLobbyEntered != null}");
         }
 
         public static void Shutdown()
@@ -34,6 +41,18 @@ namespace Megabonk.Multiplayer
 
         public static void HostLobby(int maxPlayers = 4, ELobbyType type = ELobbyType.k_ELobbyTypeFriendsOnly)
         {
+            if (!SteamAPI.IsSteamRunning())
+            {
+                Debug.LogError("HostLobby: SteamAPI not running; abort.");
+                return;
+            }
+            if (_onLobbyCreated == null)
+            {
+                Debug.LogError("HostLobby: _onLobbyCreated is null; did Init() run?");
+                return;
+            }
+
+            Debug.Log("HostLobby: creating lobby…");
             var call = SteamMatchmaking.CreateLobby(type, maxPlayers);
             _onLobbyCreated.Set(call);
         }
