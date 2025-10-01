@@ -27,7 +27,6 @@ namespace Megabonk.Multiplayer.Debugging
             for (int i = 0; i < depth; i++) sb.Append("  ");
             var go = t.gameObject;
 
-            // Build a short component list (names only)
             var comps = go.GetComponents<Component>();
             sb.Append("- ").Append(go.name).Append(" [");
             for (int i = 0; i < comps.Length; i++)
@@ -40,7 +39,6 @@ namespace Megabonk.Multiplayer.Debugging
             }
             sb.Append(']');
 
-            // Heuristic flag
             var lower = go.name.ToLowerInvariant();
             if (lower.Contains("player") || lower.Contains("pawn") || lower.Contains("character"))
                 sb.Append("  <-- LIKELY PLAYER");
@@ -62,7 +60,7 @@ namespace Megabonk.Multiplayer.Debugging
             }
 
             var t = cam.transform;
-            MelonLogger.Msg($"[DUMP] MainCamera: {GetPath(t)}");
+            MelonLogger.Msg($"[DUMP] MainCamera path: {GetPath(t)}");
             var p = t.parent;
             int i = 0;
             while (p != null && i < 4)
@@ -78,10 +76,7 @@ namespace Megabonk.Multiplayer.Debugging
             var sb = new StringBuilder();
             var stack = new System.Collections.Generic.List<Transform>();
             for (var x = t; x != null; x = x.parent) stack.Add(x);
-            for (int i = stack.Count - 1; i >= 0; i--)
-            {
-                sb.Append('/').Append(stack[i].name);
-            }
+            for (int i = stack.Count - 1; i >= 0; i--) sb.Append('/').Append(stack[i].name);
             return sb.ToString();
         }
     }
