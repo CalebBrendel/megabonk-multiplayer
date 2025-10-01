@@ -1,5 +1,6 @@
 using System.IO;
 using Steamworks;
+using UnityEngine.SceneManagement;
 
 namespace Megabonk.Multiplayer.Net
 {
@@ -41,8 +42,7 @@ namespace Megabonk.Multiplayer.Net
             if (ev.m_hConn != _conn) return;
 
             var info = ev.m_info;
-            MelonLoader.MelonLogger.Msg(
-                $"Client.ConnChanged: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' remote={info.m_identityRemote.GetSteamID()}");
+            MelonLoader.MelonLogger.Msg($"Client.ConnChanged: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' remote={info.m_identityRemote.GetSteamID()}");
 
             switch (info.m_eState)
             {
@@ -112,21 +112,39 @@ namespace Megabonk.Multiplayer.Net
 
         void ProcessPacket(byte[] data, int len)
         {
-            using (var ms = new System.IO.MemoryStream(data, 0, len))
-            using (var r = new System.IO.BinaryReader(ms))
+            using (var ms = new MemoryStream(data, 0, len))
+            using (var r = new BinaryReader(ms))
             {
                 if (!MsgIO.ReadHeader(r, out var op)) return;
                 switch (op)
                 {
+                    case Op.Hello:
+                    {
+                        var name = r.ReadString();
+                        MelonLoader.MelonLogger.Msg($"Client: got HELLO from host ({name})");
+                        break;
+                    }
+                    case Op.LoadLevel:
+                    {
+                        var scene = r.ReadString();
+                        MelonLoader.MelonLogger.Msg($"Client: loading scene '{scene}' as told by host");
+                        try { SceneManager.LoadScene(scene); }
+                        catch (System.Exception ex) { MelonLoader.MelonLogger.Error($"LoadScene('{scene}') failed: {ex.Message}"); }
+                        break;
+                    }
                     case Op.PlayerState:
+                    {
                         var pos = MsgIO.ReadVec3(r);
                         var rot = MsgIO.ReadQuat(r);
                         HarmonyPatches.GameHooks.ApplyRemotePlayerState(SteamUser.GetSteamID(), pos, rot);
                         break;
+                    }
                     case Op.Ready:
+                    {
                         bool ready = r.ReadBoolean();
                         MelonLoader.MelonLogger.Msg($"Host ready: {ready}");
                         break;
+                    }
                 }
             }
         }
