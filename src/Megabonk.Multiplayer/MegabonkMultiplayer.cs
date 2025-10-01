@@ -2,9 +2,10 @@ using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Megabonk.Multiplayer.HarmonyPatches; // for GameHooks
 using Megabonk.Multiplayer.Net;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.3", "Caleb Brendel")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.0", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -21,6 +22,9 @@ namespace Megabonk.Multiplayer
             MelonLogger.Msg("Megabonk Multiplayer init...");
             _harmony = new HarmonyLib.Harmony("cb.megabonk.multiplayer");
             _harmony.PatchAll();
+
+            // auto-bind on each scene load
+            SceneManager.sceneLoaded += GameHooks.OnSceneLoaded;
 
             InitSteam();
 
@@ -64,12 +68,19 @@ namespace Megabonk.Multiplayer
             if (Input.GetKeyDown(KeyCode.F10)) SteamLobby.ShowInviteOverlay();
             if (Input.GetKeyDown(KeyCode.F11)) SteamLobby.LeaveLobby();
 
-            // Host: broadcast current scene to clients
+            // Host: broadcast current scene so clients load in with you
             if (Input.GetKeyDown(KeyCode.F6) && IsHost && NetHost.Instance != null)
             {
                 var scene = SceneManager.GetActiveScene().name;
                 MelonLogger.Msg($"Host: starting co-op on scene '{scene}'");
                 NetHost.Instance.BroadcastLoadLevel(scene);
+            }
+
+            // NEW: F8 manually tries to bind the local player (handy if auto-bind missed it)
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                var ok = GameHooks.TryAutoBind(verbose: true);
+                if (!ok) MelonLogger.Msg("[MP] Auto-bind didn't find a player yet. Move around or wait for the scene to finish loading, then press F8 again.");
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
@@ -83,6 +94,8 @@ namespace Megabonk.Multiplayer
 
         public override void OnDeinitializeMelon()
         {
+            SceneManager.sceneLoaded -= GameHooks.OnSceneLoaded;
+
             NetHost.Instance?.Shutdown();
             NetClient.Instance?.Shutdown();
             SteamLobby.Shutdown();
