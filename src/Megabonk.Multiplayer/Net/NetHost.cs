@@ -99,12 +99,15 @@ namespace Megabonk.Multiplayer.Net
 
         void BroadcastPlayerState()
         {
-            var pos = HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot) ? HarmonyPatches.GameHooks.LastPos : Vector3.zero;
+            // NEW: don’t send until we have a valid player ref (avoids IL2CPP span path)
+            if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot))
+                return;
+
             using (var ms = new MemoryStream())
             using (var w = new BinaryWriter(ms))
             {
                 MsgIO.WriteHeader(w, Op.PlayerState);
-                MsgIO.WriteVec3(w, pos);
+                MsgIO.WriteVec3(w, HarmonyPatches.GameHooks.LastPos);
                 MsgIO.WriteQuat(w, rot);
                 var bytes = ms.ToArray();
                 foreach (var c in _clients) NetCommon.Send(c, bytes, false);
