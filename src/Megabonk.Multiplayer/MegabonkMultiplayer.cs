@@ -8,7 +8,7 @@ namespace Megabonk.Multiplayer
 public class MegabonkMultiplayer : MelonMod
 {
 private static bool _steamOk;
-private Harmony _harmony;
+private HarmonyLib.Harmony _harmony;
 
 
 public static bool IsHost => SteamLobby.IsHost;
