@@ -7,9 +7,8 @@ using Steamworks;
 namespace Megabonk.Multiplayer.HarmonyPatches
 {
     /// <summary>
-    /// Finds and caches the local player Transform without tag lookups
-    /// or Scene.GetRootGameObjects (stripped on some IL2CPP builds).
-    /// Uses Camera.main ancestry and a root scan built from Resources.FindObjectsOfTypeAll.
+    /// Player binder that avoids stripped APIs. Binds by following Camera.main up to a plausible rig root.
+    /// Clears and rebinds on scene changes; F8 can force a rebind.
     /// </summary>
     public static class GameHooks
     {
@@ -19,45 +18,80 @@ namespace Megabonk.Multiplayer.HarmonyPatches
         public static Quaternion LastRot;
 
         private static float _lastBindAttemptTime;
+        private static int _lastSceneHandle = -1;
 
         public static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // If we switched scenes, clear any stale binding so we rebind to gameplay rig
+            if (scene.handle != _lastSceneHandle)
+            {
+                _lastSceneHandle = scene.handle;
+                if (LocalPlayer != null)
+                    MelonLogger.Msg($"[MP] Scene changed to '{scene.name}'. Clearing previous player binding ('{LocalPlayer.name}').");
+                LocalPlayer = null;
+            }
+
             TryAutoBind(verbose: true);
         }
 
+        /// <summary>
+        /// Force a rebind regardless of current state (used by F8).
+        /// </summary>
+        public static bool ForceRebind(bool verbose = true)
+        {
+            LocalPlayer = null;
+            return TryAutoBind(verbose);
+        }
+
+        /// <summary>
+        /// Attempt to discover and cache the local player Transform.
+        /// Returns true if bound this call or already bound.
+        /// </summary>
         public static bool TryAutoBind(bool verbose = false)
         {
+            // If we have a player but it belongs to a different (old) scene, drop it.
+            if (LocalPlayer != null && LocalPlayer)
+            {
+                var active = SceneManager.GetActiveScene();
+                if (LocalPlayer.gameObject.scene.handle != active.handle)
+                {
+                    if (verbose) MelonLogger.Msg($"[MP] Discarding stale player binding from scene '{LocalPlayer.gameObject.scene.name}'.");
+                    LocalPlayer = null;
+                }
+            }
+
             if (LocalPlayer != null && LocalPlayer) return true;
 
-            // throttle repeated attempts
+            // throttle repeated attempts a bit to avoid spamming during load
             if (Time.unscaledTime - _lastBindAttemptTime < 0.75f)
                 return false;
             _lastBindAttemptTime = Time.unscaledTime;
 
-            Transform found = null;
-
-            // 1) Use the camera rig (common in FPS/3rd-person controllers)
+            // --- Heuristic: use the camera rig (works for menu and gameplay; we rebind on scene change) ---
+            Transform candidate = null;
             if (Camera.main != null)
             {
-                var t = Camera.main.transform;
-                for (int i = 0; i < 3 && t.parent != null; i++) t = t.parent;
-                if (Bind(t, "camera-parent", verbose)) return true;
-            }
+                candidate = Camera.main.transform;
+                // climb up a few levels to a plausible rig root
+                for (int i = 0; i < 3 && candidate.parent != null; i++)
+                    candidate = candidate.parent;
 
-            // 2) Root objects scan (IL2CPP-safe) via Resources.FindObjectsOfTypeAll(typeof(Transform))
-            var scn = SceneManager.GetActiveScene();
-            var roots = GetSceneRootsSafe(scn);
-            if (roots != null && roots.Length > 0)
-            {
-                for (int i = 0; i < roots.Length; i++)
+                if (Bind(candidate, "camera-parent", verbose))
+                    return true;
+
+                // If the camera has a parent, try siblings with "player"/"character" in the name
+                var parent = Camera.main.transform.parent;
+                if (parent != null)
                 {
-                    var go = roots[i];
-                    if (go == null) continue;
-                    var name = go.name ?? "";
-                    var lower = name.ToLowerInvariant();
-                    if (lower.Contains("player") || lower.Contains("pawn") || lower.Contains("character"))
+                    for (int i = 0; i < parent.childCount; i++)
                     {
-                        if (Bind(go.transform, $"root-name:{name}", verbose)) return true;
+                        var s = parent.GetChild(i);
+                        var n = (s.name ?? "").ToLowerInvariant();
+                        if (n.Contains("player") || n.Contains("character") || n.Contains("pawn"))
+                        {
+                            if (Bind(s, "camera-sibling", verbose))
+                                return true;
+                        }
                     }
                 }
             }
@@ -76,6 +110,10 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             return true;
         }
 
+        /// <summary>
+        /// Read cached local player transform (no heavy lookups at runtime).
+        /// If not bound, attempts a throttled auto-bind.
+        /// </summary>
         public static bool TryGetLocalPlayerPos(out Quaternion rot)
         {
             if (LocalPlayer == null || !LocalPlayer)
@@ -93,6 +131,9 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             return false;
         }
 
+        /// <summary>
+        /// Spawns/updates a simple remote avatar (capsule) to visualize the other player.
+        /// </summary>
         public static void ApplyRemotePlayerState(CSteamID who, Vector3 pos, Quaternion rot)
         {
             var tag = "RemotePlayer_" + who.m_SteamID;
@@ -101,55 +142,10 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             {
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 avatar.name = tag;
-                // No collider toggles here to avoid needing PhysicsModule.
+                // Collider untouched to avoid PhysicsModule ref.
             }
             avatar.transform.position = pos;
             avatar.transform.rotation = rot;
-        }
-
-        /// <summary>
-        /// IL2CPP-safe "get scene roots" using Resources.FindObjectsOfTypeAll instead of Scene.GetRootGameObjects().
-        /// Filters out objects not in the active scene and those hidden from hierarchy.
-        /// </summary>
-        private static GameObject[] GetSceneRootsSafe(Scene scn)
-        {
-            try
-            {
-                var objs = Resources.FindObjectsOfTypeAll(typeof(Transform)); // returns UnityEngine.Object[]
-                // First pass: count
-                int count = 0;
-                for (int i = 0; i < objs.Length; i++)
-                {
-                    var t = objs[i] as Transform;
-                    if (t == null) continue;
-                    var go = t.gameObject;
-                    if (t.parent == null &&
-                        go.scene.handle == scn.handle &&
-                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
-                        count++;
-                }
-                if (count == 0) return System.Array.Empty<GameObject>();
-
-                // Second pass: collect
-                var result = new GameObject[count];
-                int idx = 0;
-                for (int i = 0; i < objs.Length; i++)
-                {
-                    var t = objs[i] as Transform;
-                    if (t == null) continue;
-                    var go = t.gameObject;
-                    if (t.parent == null &&
-                        go.scene.handle == scn.handle &&
-                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
-                        result[idx++] = go;
-                }
-                return result;
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Error($"[MP] GetSceneRootsSafe failed: {ex.GetType().Name}: {ex.Message}");
-                return System.Array.Empty<GameObject>();
-            }
         }
     }
 }
