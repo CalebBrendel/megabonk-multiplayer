@@ -1,0 +1,88 @@
+using System.Text;
+using MelonLoader;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+namespace Megabonk.Multiplayer.Debugging
+{
+    public static class SceneDumper
+    {
+        public static void Dump(int maxDepth = 3)
+        {
+            var scn = SceneManager.GetActiveScene();
+            var roots = scn.GetRootGameObjects();
+            MelonLogger.Msg($"[DUMP] Scene '{scn.name}' roots={roots.Length}");
+            for (int i = 0; i < roots.Length; i++)
+            {
+                var go = roots[i];
+                DumpTransform(go.transform, 0, maxDepth);
+            }
+            LogCameraChain();
+        }
+
+        static void DumpTransform(Transform t, int depth, int maxDepth)
+        {
+            if (t == null) return;
+            var sb = new StringBuilder();
+            for (int i = 0; i < depth; i++) sb.Append("  ");
+            var go = t.gameObject;
+
+            // Build a short component list (names only)
+            var comps = go.GetComponents<Component>();
+            sb.Append("- ").Append(go.name).Append(" [");
+            for (int i = 0; i < comps.Length; i++)
+            {
+                var c = comps[i];
+                if (c == null) continue;
+                var tn = c.GetType().Name;
+                sb.Append(tn);
+                if (i < comps.Length - 1) sb.Append(',');
+            }
+            sb.Append(']');
+
+            // Heuristic flag
+            var lower = go.name.ToLowerInvariant();
+            if (lower.Contains("player") || lower.Contains("pawn") || lower.Contains("character"))
+                sb.Append("  <-- LIKELY PLAYER");
+
+            MelonLogger.Msg(sb.ToString());
+
+            if (depth >= maxDepth) return;
+            for (int i = 0; i < t.childCount; i++)
+                DumpTransform(t.GetChild(i), depth + 1, maxDepth);
+        }
+
+        static void LogCameraChain()
+        {
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                MelonLogger.Msg("[DUMP] MainCamera not found.");
+                return;
+            }
+
+            var t = cam.transform;
+            MelonLogger.Msg($"[DUMP] MainCamera: {GetPath(t)}");
+            var p = t.parent;
+            int i = 0;
+            while (p != null && i < 4)
+            {
+                MelonLogger.Msg($"[DUMP] parent[{i}]: {p.name}");
+                p = p.parent;
+                i++;
+            }
+        }
+
+        static string GetPath(Transform t)
+        {
+            var sb = new StringBuilder();
+            var stack = new System.Collections.Generic.List<Transform>();
+            for (var x = t; x != null; x = x.parent) stack.Add(x);
+            for (int i = stack.Count - 1; i >= 0; i--)
+            {
+                sb.Append('/').Append(stack[i].name);
+            }
+            return sb.ToString();
+        }
+    }
+}
