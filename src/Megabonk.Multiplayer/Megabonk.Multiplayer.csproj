@@ -13,10 +13,10 @@
     <RootNamespace>Megabonk.Multiplayer</RootNamespace>
     <AssemblyName>Megabonk.Multiplayer</AssemblyName>
 
-    <!-- Match Steamworks.NET 4.8 -->
+    <!-- Match Steamworks.NET -->
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
 
-    <!-- Match MelonLoader (AMD64) -->
+    <!-- MelonLoader is AMD64 -->
     <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
 
@@ -59,7 +59,7 @@
     <SteamworksDir>$(LibsDir)Steamworks.NET\</SteamworksDir>
   </PropertyGroup>
 
-  <!-- MelonLoader refs -->
+  <!-- MelonLoader refs (net35) -->
   <ItemGroup Condition="'$(UseMelonNet35)' == 'true'">
     <Reference Include="MelonLoader">
       <HintPath>$(MelonNet35Dir)MelonLoader.dll</HintPath>
@@ -77,8 +77,13 @@
       <HintPath>$(MelonNet35Dir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(MelonNet35Dir)UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
+  <!-- MelonLoader refs (net6) -->
   <ItemGroup Condition="'$(UseMelonNet6)' == 'true'">
     <Reference Include="MelonLoader">
       <HintPath>$(MelonNet6Dir)MelonLoader.dll</HintPath>
@@ -96,16 +101,20 @@
       <HintPath>$(MelonNet6Dir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(MelonNet6Dir)UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
-  <!-- Steamworks.NET -->
+  <!-- Steamworks.NET from repo -->
   <ItemGroup>
     <Reference Include="Steamworks.NET">
       <HintPath>$(SteamworksDir)Steamworks.NET.dll</HintPath>
       <Private>false</Private>
     </Reference>
 
-    <!-- Standard .NET -->
+    <!-- .NET -->
     <Reference Include="System" />
     <Reference Include="System.Core" />
   </ItemGroup>
