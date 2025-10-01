@@ -120,7 +120,6 @@ namespace Megabonk.Multiplayer.Net
 
         void BroadcastPlayerState()
         {
-            // still gated off until we wire a cached Transform
             if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot))
                 return;
 
