@@ -1,36 +1,60 @@
-# Build artifacts
+# ==============================
+# Build / IDE junk
+# ==============================
 bin/
 obj/
 [Bb]uild/
-[Ll]ogs/
-.vs/
-*.user
+[Bb]uilds/
 *.suo
-
-# OS cruft
-.DS_Store
-Thumbs.db
-
-# IDE settings
-.idea/
+*.user
+*.userosscache
+*.sln.docstates
+*.vs/
 .vscode/
+.idea/
 
-# NuGet & caches
-*.nupkg
-*.snupkg
-.nuget/
-*.nuget.props
-*.nuget.targets
-
-# Symbols (optional—keep if you want to debug)
+# ==============================
+# MelonLoader & Game-specific
+# ==============================
+# Don’t commit built mod DLLs
+*.dll
 *.pdb
 *.mdb
 
-# Local reference DLLs (keep the minimal set so others can build)
-lib/managed/*
-!lib/managed/MelonLoader.dll
-!lib/managed/0Harmony.dll
-!lib/managed/UnityEngine.CoreModule.dll
+# Don’t commit MelonLoader folders from the actual game install
+MelonLoader/
+Mods/
+Plugins/
+UserData/
+UserLibs/
 
-# Third-party source (we do keep LiteNetLib sources)
-# (If you add prebuilt DLLs later, whitelist as needed)
+# ==============================
+# Logs & temp
+# ==============================
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.DS_Store
+Thumbs.db
+
+# ==============================
+# Steamworks.NET
+# ==============================
+# Local libs (keep a placeholder in repo)
+libs/*
+!libs/.gitkeep
+
+# ==============================
+# OS junk
+# ==============================
+ehthumbs.db
+Desktop.ini
+
+# ==============================
+# Rider / JetBrains
+# ==============================
+*.iml
+.gradle/
+out/
