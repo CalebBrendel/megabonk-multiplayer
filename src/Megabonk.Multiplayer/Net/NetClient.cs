@@ -1,5 +1,4 @@
 using System.IO;
-using UnityEngine;
 using Steamworks;
 
 namespace Megabonk.Multiplayer.Net
@@ -35,14 +34,22 @@ namespace Megabonk.Multiplayer.Net
             Instance = null;
         }
 
+        static string StateName(ESteamNetworkingConnectionState s) => s.ToString();
+
         void OnConnChanged(SteamNetConnectionStatusChangedCallback_t ev)
         {
             if (ev.m_hConn != _conn) return;
-            switch (ev.m_info.m_eState)
+
+            var info = ev.m_info;
+            MelonLoader.MelonLogger.Msg(
+                $"Client.ConnChanged: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' remote={info.m_identityRemote.GetSteamID()}");
+
+            switch (info.m_eState)
             {
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connected:
                     SendHello();
                     break;
+
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ClosedByPeer:
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
                     MelonLoader.MelonLogger.Msg("Disconnected from host");
@@ -75,7 +82,6 @@ namespace Megabonk.Multiplayer.Net
 
         void SendPlayerState()
         {
-            // NEW: skip until player transform is known (avoids IL2CPP span path)
             if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot))
                 return;
 
@@ -96,7 +102,7 @@ namespace Megabonk.Multiplayer.Net
             int got = NetCommon.Receive(_conn, ref _rx);
             if (got > 0) ProcessPacket(_rx, got);
 
-            _stateTimer += Time.deltaTime;
+            _stateTimer += UnityEngine.Time.deltaTime;
             if (_stateTimer >= 0.1f)
             {
                 _stateTimer = 0f;
@@ -106,8 +112,8 @@ namespace Megabonk.Multiplayer.Net
 
         void ProcessPacket(byte[] data, int len)
         {
-            using (var ms = new MemoryStream(data, 0, len))
-            using (var r = new BinaryReader(ms))
+            using (var ms = new System.IO.MemoryStream(data, 0, len))
+            using (var r = new System.IO.BinaryReader(ms))
             {
                 if (!MsgIO.ReadHeader(r, out var op)) return;
                 switch (op)
