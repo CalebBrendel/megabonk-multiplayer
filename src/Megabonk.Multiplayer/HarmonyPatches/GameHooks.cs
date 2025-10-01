@@ -35,7 +35,7 @@ namespace Megabonk.Multiplayer.HarmonyPatches
 
             Transform found = null;
 
-            // 1) Common tag variants (safe helper wraps exceptions)
+            // 1) Common tag variants
             found = FindByTag("Player") ?? FindByTag("player") ?? FindByTag("LocalPlayer");
             if (Bind(found, "tag", verbose)) return true;
 
@@ -43,7 +43,7 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             if (Camera.main != null)
             {
                 var t = Camera.main.transform;
-                for (int i = 0; i < 3 && t.parent != null; i++) t = t.parent; // climb toward rig root
+                for (int i = 0; i < 3 && t.parent != null; i++) t = t.parent;
                 if (Bind(t, "camera-parent", verbose)) return true;
             }
 
@@ -63,7 +63,7 @@ namespace Megabonk.Multiplayer.HarmonyPatches
                 }
             }
 
-            if (verbose) MelonLoader.MelonLogger.Msg("[MP] TryAutoBind: no obvious player found yet.");
+            if (verbose) MelonLogger.Msg("[MP] TryAutoBind: no obvious player found yet.");
             return false;
         }
 
@@ -72,10 +72,11 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             try
             {
                 var go = GameObject.FindWithTag(tag);
-                return go != null ? go.transform : null;
+                return go ? go.transform : null;
             }
             catch
             {
+                // If the tag doesn't exist in this scene, Unity throws — just ignore.
                 return null;
             }
         }
@@ -86,16 +87,13 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             LocalPlayer = t;
             LastPos = LocalPlayer.position;
             LastRot = LocalPlayer.rotation;
-            if (verbose) MelonLoader.MelonLogger.Msg($"[MP] Bound local player via {via}: '{LocalPlayer.name}'");
+            if (verbose) MelonLogger.Msg($"[MP] Bound local player via {via}: '{LocalPlayer.name}'");
             return true;
         }
 
-        /// <summary>
-        /// Read cached local player transform (no heavy lookups at runtime).
-        /// If not bound, attempts a throttled auto-bind in the background.
-        /// </summary>
         public static bool TryGetLocalPlayerPos(out Quaternion rot)
         {
+            // opportunistically try binding
             if (LocalPlayer == null || !LocalPlayer)
                 TryAutoBind();
 
@@ -113,7 +111,6 @@ namespace Megabonk.Multiplayer.HarmonyPatches
 
         /// <summary>
         /// Spawns/updates a simple remote avatar (capsule) to visualize the other player.
-        /// (No Collider references to avoid needing PhysicsModule in the project.)
         /// </summary>
         public static void ApplyRemotePlayerState(CSteamID who, Vector3 pos, Quaternion rot)
         {
@@ -123,7 +120,10 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             {
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 avatar.name = tag;
-                // If you want to remove colliders later, we can add PhysicsModule or do reflection.
+
+                // NOTE: We intentionally do NOT touch Collider here to avoid needing PhysicsModule.
+                // If you want the avatar to be non-colliding, we can add a PhysicsModule reference
+                // and disable the collider later.
             }
             avatar.transform.position = pos;
             avatar.transform.rotation = rot;
