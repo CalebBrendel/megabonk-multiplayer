@@ -1,55 +1,76 @@
 using System;
-using System.IO;
+using System.Runtime.InteropServices;
 using Steamworks;
-
 
 namespace Megabonk.Multiplayer.Net
 {
-public static class NetCommon
-{
-public const int Channel = 0; // P2P virtual channel
-public const int MTU = 1200; // conservative packet size
+    public static class NetCommon
+    {
+        public const int Channel = 0; // P2P virtual channel
+        public const int MTU = 1200;
 
+        public static HSteamListenSocket ListenP2P()
+        {
+            var opt = Array.Empty<SteamNetworkingConfigValue_t>();
+            // Signature: CreateListenSocketP2P(int nLocalVirtualPort, int nOptions, SteamNetworkingConfigValue_t[] pOptions)
+            return SteamNetworkingSockets.CreateListenSocketP2P(Channel, opt.Length, opt);
+        }
 
-public static HSteamListenSocket ListenP2P()
-{
-var opt = new SteamNetworkingConfigValue_t[0];
-return SteamNetworkingSockets.CreateListenSocketP2P(Channel, (uint)opt.Length, opt);
-}
+        public static HSteamNetConnection ConnectTo(Steamworks.CSteamID target)
+        {
+            SteamNetworkingIdentity id = new SteamNetworkingIdentity();
+            id.SetSteamID(target);
+            var opt = Array.Empty<SteamNetworkingConfigValue_t>();
+            // Signature: ConnectP2P(ref SteamNetworkingIdentity, int nRemoteVirtualPort, int nOptions, SteamNetworkingConfigValue_t[] pOptions)
+            return SteamNetworkingSockets.ConnectP2P(ref id, Channel, opt.Length, opt);
+        }
 
+        public static void Send(HSteamNetConnection conn, byte[] data, bool reliable)
+        {
+            int flags = reliable
+                ? Constants.k_nSteamNetworkingSend_Reliable
+                : Constants.k_nSteamNetworkingSend_Unreliable;
 
-public static HSteamNetConnection ConnectTo(CSteamID target)
-{
-SteamNetworkingIdentity id = new SteamNetworkingIdentity();
-id.SetSteamID(target);
-var opt = new SteamNetworkingConfigValue_t[0];
-return SteamNetworkingSockets.ConnectP2P(ref id, Channel, (uint)opt.Length, opt);
-}
+            // Signature: SendMessageToConnection(HSteamNetConnection, IntPtr, uint cb, int flags, out long outMessageNumber)
+            unsafe
+            {
+                fixed (byte* p = data)
+                {
+                    SteamNetworkingSockets.SendMessageToConnection(
+                        conn,
+                        (IntPtr)p,
+                        (uint)data.Length,
+                        flags,
+                        out long _);
+                }
+            }
+        }
 
+        public static int Receive(HSteamNetConnection conn, ref byte[] buffer)
+        {
+            IntPtr[] ptrs = new IntPtr[8];
+            int received = SteamNetworkingSockets.ReceiveMessagesOnConnection(conn, ptrs, ptrs.Length);
+            if (received <= 0) return 0;
 
-public static void Send(HSteamNetConnection conn, byte[] data, bool reliable)
-{
-var flags = reliable ? Constants.k_nSteamNetworkingSend_Reliable : Constants.k_nSteamNetworkingSend_Unreliable;
-SteamNetworkingSockets.SendMessageToConnection(conn, data, (uint)data.Length, flags, out _);
-}
+            int size = 0;
+            for (int i = 0; i < received; i++)
+            {
+                // Marshal the struct from the pointer
+                var msg = (SteamNetworkingMessage_t)Marshal.PtrToStructure(
+                    ptrs[i], typeof(SteamNetworkingMessage_t));
 
+                int cb = (int)msg.m_cbSize;
+                if (buffer == null || buffer.Length < cb)
+                    buffer = new byte[cb];
 
-public static int Receive(HSteamNetConnection conn, ref byte[] buffer)
-{
-IntPtr[] msgs = new IntPtr[8];
-int received = SteamNetworkingSockets.ReceiveMessagesOnConnection(conn, msgs, msgs.Length);
-if (received <= 0) return 0;
-int count = 0;
-for (int i = 0; i < received; i++)
-{
-var msg = new SteamNetworkingMessage_t(msgs[i]);
-if (buffer == null || buffer.Length < msg.m_cbSize)
-buffer = new byte[msg.m_cbSize];
-System.Runtime.InteropServices.Marshal.Copy(msg.m_pData, buffer, 0, (int)msg.m_cbSize);
-msg.Release();
-count = (int)msg.m_cbSize; // return last size (process immediately in callers)
-}
-return count;
-}
-}
+                Marshal.Copy(msg.m_pData, buffer, 0, cb);
+
+                // Important: release the message via static Release(ptr)
+                SteamNetworkingMessage_t.Release(ptrs[i]);
+
+                size = cb; // return last size processed (caller processes immediately)
+            }
+            return size;
+        }
+    }
 }
