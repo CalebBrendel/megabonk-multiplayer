@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.IO;
-using UnityEngine;
 using Steamworks;
 
 namespace Megabonk.Multiplayer.Net
@@ -50,8 +49,7 @@ namespace Megabonk.Multiplayer.Net
 
         void LogConnInfo(string who, HSteamNetConnection h, SteamNetConnectionInfo_t info)
         {
-            MelonLoader.MelonLogger.Msg(
-                $"{who}: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' from={info.m_identityRemote.GetSteamID()}");
+            MelonLoader.MelonLogger.Msg($"{who}: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' from={info.m_identityRemote.GetSteamID()}");
         }
 
         void OnConnChanged(SteamNetConnectionStatusChangedCallback_t ev)
@@ -64,13 +62,11 @@ namespace Megabonk.Multiplayer.Net
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connecting:
                     SteamNetworkingSockets.AcceptConnection(ev.m_hConn);
                     break;
-
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connected:
                     _clients.Add(ev.m_hConn);
                     _clientIds[ev.m_hConn] = info.m_identityRemote.GetSteamID();
                     SendHello(ev.m_hConn);
                     break;
-
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ClosedByPeer:
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
                     _clients.Remove(ev.m_hConn);
@@ -78,6 +74,19 @@ namespace Megabonk.Multiplayer.Net
                     SteamNetworkingSockets.CloseConnection(ev.m_hConn, 0, "disconnect", false);
                     break;
             }
+        }
+
+        public void BroadcastLoadLevel(string sceneName)
+        {
+            using (var ms = new MemoryStream())
+            using (var w = new BinaryWriter(ms))
+            {
+                MsgIO.WriteHeader(w, Op.LoadLevel);
+                w.Write(sceneName);
+                var bytes = ms.ToArray();
+                foreach (var c in _clients) NetCommon.Send(c, bytes, true);
+            }
+            MelonLoader.MelonLogger.Msg($"Host: told clients to load scene '{sceneName}'");
         }
 
         public void ToggleReady()
@@ -111,6 +120,7 @@ namespace Megabonk.Multiplayer.Net
 
         void BroadcastPlayerState()
         {
+            // still gated off until we wire a cached Transform
             if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot))
                 return;
 
@@ -133,7 +143,7 @@ namespace Megabonk.Multiplayer.Net
                 if (got > 0) ProcessPacket(c, _rx, got);
             }
 
-            _stateTimer += Time.deltaTime;
+            _stateTimer += UnityEngine.Time.deltaTime;
             if (_stateTimer >= 0.1f)
             {
                 _stateTimer = 0f;
@@ -149,15 +159,25 @@ namespace Megabonk.Multiplayer.Net
                 if (!MsgIO.ReadHeader(r, out var op)) return;
                 switch (op)
                 {
+                    case Op.Hello:
+                    {
+                        var name = r.ReadString();
+                        MelonLoader.MelonLogger.Msg($"Host: got HELLO from {_clientIds[from]} ({name})");
+                        break;
+                    }
                     case Op.PlayerState:
+                    {
                         var pos = MsgIO.ReadVec3(r);
                         var rot = MsgIO.ReadQuat(r);
                         HarmonyPatches.GameHooks.ApplyRemotePlayerState(_clientIds[from], pos, rot);
                         break;
+                    }
                     case Op.Ready:
+                    {
                         bool ready = r.ReadBoolean();
                         MelonLoader.MelonLogger.Msg($"Client ready: {ready}");
                         break;
+                    }
                 }
             }
         }
