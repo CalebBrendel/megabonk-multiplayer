@@ -79,30 +79,35 @@ namespace Megabonk.Multiplayer.Debugging
             return sb.ToString();
         }
 
-        // Same IL2CPP-safe root enumeration as in GameHooks
+        // IL2CPP-safe roots using Resources.FindObjectsOfTypeAll(typeof(Transform))
         static GameObject[] GetSceneRootsSafe(Scene scn)
         {
             try
             {
-                var all = Object.FindObjectsOfType<Transform>();
+                var objs = Resources.FindObjectsOfTypeAll(typeof(Transform));
                 int count = 0;
-                for (int i = 0; i < all.Length; i++)
+                for (int i = 0; i < objs.Length; i++)
                 {
-                    var t = all[i];
+                    var t = objs[i] as Transform;
                     if (t == null) continue;
                     var go = t.gameObject;
-                    if (t.parent == null && go.scene.handle == scn.handle) count++;
+                    if (t.parent == null &&
+                        go.scene.handle == scn.handle &&
+                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
+                        count++;
                 }
                 if (count == 0) return System.Array.Empty<GameObject>();
 
                 var result = new GameObject[count];
                 int idx = 0;
-                for (int i = 0; i < all.Length; i++)
+                for (int i = 0; i < objs.Length; i++)
                 {
-                    var t = all[i];
+                    var t = objs[i] as Transform;
                     if (t == null) continue;
                     var go = t.gameObject;
-                    if (t.parent == null && go.scene.handle == scn.handle)
+                    if (t.parent == null &&
+                        go.scene.handle == scn.handle &&
+                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
                         result[idx++] = go;
                 }
                 return result;
