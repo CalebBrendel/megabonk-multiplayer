@@ -69,7 +69,7 @@ namespace Megabonk.Multiplayer
             NetClient.Instance?.Shutdown();
             SteamLobby.Shutdown();
             if (_steamOk) Steamworks.SteamAPI.Shutdown();
-            _harmony?.UnpatchAll("cb.megabonk.multiplayer");
+            _harmony?.UnpatchSelf();
         }
 
         // Fully-qualified Steamworks types here so no 'using Steamworks' is required.
