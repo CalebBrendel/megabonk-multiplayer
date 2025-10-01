@@ -4,9 +4,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using Megabonk.Multiplayer.HarmonyPatches;   // GameHooks
 using Megabonk.Multiplayer.Net;
-using Megabonk.Multiplayer.Debugging;        // SceneDumper (F12)
+using Megabonk.Multiplayer.Debugging;        // SceneDumper (F5)
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.3", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.4", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -98,10 +98,10 @@ namespace Megabonk.Multiplayer
                 if (!ok) MelonLogger.Msg("[MP] Auto-bind didn't find a player yet. Try again after the scene fully loads.");
             }
 
-            // NEW: Scene dumper (helps find the real player object/path)
-            if (Input.GetKeyDown(KeyCode.F12))
+            // Scene dumper (find the real player root) — now on F5
+            if (Input.GetKeyDown(KeyCode.F5))
             {
-                SceneDumper.Dump(3); // raise depth to 4–5 if you want more detail
+                SceneDumper.Dump(3); // raise to 4–5 for deeper trees
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
