@@ -1,5 +1,5 @@
 using Steamworks;
-using UnityEngine;
+using MelonLoader;
 
 namespace Megabonk.Multiplayer
 {
@@ -20,7 +20,7 @@ namespace Megabonk.Multiplayer
         {
             if (!SteamAPI.IsSteamRunning())
             {
-                Debug.LogError("SteamLobby.Init: Steam is not running or SteamAPI not initialized.");
+                MelonLogger.Error("SteamLobby.Init: Steam is not running or SteamAPI not initialized.");
                 return;
             }
 
@@ -28,7 +28,7 @@ namespace Megabonk.Multiplayer
             _onLobbyEntered       = Callback<LobbyEnter_t>.Create(OnLobbyEnteredCb);
             _onLobbyCreated       = CallResult<LobbyCreated_t>.Create(OnLobbyCreatedCb);
 
-            Debug.Log($"SteamLobby.Init: callbacks ready? created={_onLobbyCreated != null}, joinReq={_onLobbyJoinRequested != null}, entered={_onLobbyEntered != null}");
+            MelonLogger.Msg($"SteamLobby.Init: callbacks ready? created={_onLobbyCreated != null}, joinReq={_onLobbyJoinRequested != null}, entered={_onLobbyEntered != null}");
         }
 
         public static void Shutdown()
@@ -43,16 +43,16 @@ namespace Megabonk.Multiplayer
         {
             if (!SteamAPI.IsSteamRunning())
             {
-                Debug.LogError("HostLobby: SteamAPI not running; abort.");
+                MelonLogger.Error("HostLobby: SteamAPI not running; abort.");
                 return;
             }
             if (_onLobbyCreated == null)
             {
-                Debug.LogError("HostLobby: _onLobbyCreated is null; did Init() run?");
+                MelonLogger.Error("HostLobby: _onLobbyCreated is null; did Init() run?");
                 return;
             }
 
-            Debug.Log("HostLobby: creating lobby…");
+            MelonLogger.Msg("HostLobby: creating lobby…");
             var call = SteamMatchmaking.CreateLobby(type, maxPlayers);
             _onLobbyCreated.Set(call);
         }
@@ -77,7 +77,7 @@ namespace Megabonk.Multiplayer
         {
             if (ioFail || data.m_eResult != EResult.k_EResultOK)
             {
-                Debug.LogError($"Lobby creation failed: {data.m_eResult}");
+                MelonLogger.Error($"Lobby creation failed: {data.m_eResult}");
                 return;
             }
             CurrentLobby = new CSteamID(data.m_ulSteamIDLobby);
