@@ -2,10 +2,10 @@ using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Megabonk.Multiplayer.HarmonyPatches; // for GameHooks
+using Megabonk.Multiplayer.HarmonyPatches; // GameHooks
 using Megabonk.Multiplayer.Net;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.0", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.1", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -15,6 +15,10 @@ namespace Megabonk.Multiplayer
         private static bool _steamOk;
         private HarmonyLib.Harmony _harmony;
 
+        // NEW: simple scene-change tracker (avoids UnityAction<T1,T2> AOT issues)
+        private static int _lastSceneIndex = -1;
+        private static string _lastSceneName = null;
+
         public static bool IsHost => SteamLobby.IsHost;
 
         public override void OnInitializeMelon()
@@ -23,9 +27,6 @@ namespace Megabonk.Multiplayer
             _harmony = new HarmonyLib.Harmony("cb.megabonk.multiplayer");
             _harmony.PatchAll();
 
-            // auto-bind on each scene load
-            SceneManager.sceneLoaded += GameHooks.OnSceneLoaded;
-
             InitSteam();
 
             if (_steamOk)
@@ -33,6 +34,10 @@ namespace Megabonk.Multiplayer
                 SteamLobby.OnLobbyEntered += LobbyEntered;
                 SteamLobby.OnLobbyLeft += LobbyLeft;
                 SteamLobby.Init();
+
+                // kick an initial bind attempt on first scene we detect in OnUpdate
+                _lastSceneIndex = -1;
+                _lastSceneName = null;
             }
             else
             {
@@ -64,23 +69,34 @@ namespace Megabonk.Multiplayer
 
             Steamworks.SteamAPI.RunCallbacks();
 
+            // --- SCENE CHANGE POLL (replaces SceneManager.sceneLoaded subscription) ---
+            var scn = SceneManager.GetActiveScene();
+            if (scn.buildIndex != _lastSceneIndex || scn.name != _lastSceneName)
+            {
+                _lastSceneIndex = scn.buildIndex;
+                _lastSceneName = scn.name;
+                // Call our scene-load hook manually
+                GameHooks.OnSceneLoaded(scn, LoadSceneMode.Single);
+            }
+
+            // Hotkeys
             if (Input.GetKeyDown(KeyCode.F9))  SteamLobby.HostLobby();
             if (Input.GetKeyDown(KeyCode.F10)) SteamLobby.ShowInviteOverlay();
             if (Input.GetKeyDown(KeyCode.F11)) SteamLobby.LeaveLobby();
 
-            // Host: broadcast current scene so clients load in with you
+            // Host broadcasts current scene to clients
             if (Input.GetKeyDown(KeyCode.F6) && IsHost && NetHost.Instance != null)
             {
-                var scene = SceneManager.GetActiveScene().name;
+                var scene = scn.name;
                 MelonLogger.Msg($"Host: starting co-op on scene '{scene}'");
                 NetHost.Instance.BroadcastLoadLevel(scene);
             }
 
-            // NEW: F8 manually tries to bind the local player (handy if auto-bind missed it)
+            // Manual player bind
             if (Input.GetKeyDown(KeyCode.F8))
             {
                 var ok = GameHooks.TryAutoBind(verbose: true);
-                if (!ok) MelonLogger.Msg("[MP] Auto-bind didn't find a player yet. Move around or wait for the scene to finish loading, then press F8 again.");
+                if (!ok) MelonLogger.Msg("[MP] Auto-bind didn't find a player yet. Try again after the scene fully loads.");
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
@@ -94,8 +110,6 @@ namespace Megabonk.Multiplayer
 
         public override void OnDeinitializeMelon()
         {
-            SceneManager.sceneLoaded -= GameHooks.OnSceneLoaded;
-
             NetHost.Instance?.Shutdown();
             NetClient.Instance?.Shutdown();
             SteamLobby.Shutdown();
