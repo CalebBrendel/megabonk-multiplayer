@@ -4,7 +4,7 @@ using HarmonyLib;
 using UnityEngine;
 using Megabonk.Multiplayer.Net;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.1", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.2.2", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -29,13 +29,6 @@ namespace Megabonk.Multiplayer
                 SteamLobby.OnLobbyEntered += LobbyEntered;
                 SteamLobby.OnLobbyLeft += LobbyLeft;
                 SteamLobby.Init();
-
-                // Optional diagnostics — uncomment if needed:
-                // try {
-                //     var asm = typeof(Steamworks.SteamAPI).Assembly;
-                //     MelonLogger.Msg($"Steamworks.NET runtime: {asm.FullName}");
-                //     MelonLogger.Msg($"Steamworks.NET location: {asm.Location}");
-                // } catch (System.Exception ex) { MelonLogger.Error(ex.ToString()); }
             }
             else
             {
@@ -54,7 +47,12 @@ namespace Megabonk.Multiplayer
             if (!_steamOk)
             {
                 MelonLogger.Error("SteamAPI.Init failed. Is Steam running / app owned?");
+                return;
             }
+
+            // NEW: Initialize Steam Datagram Relay (SDR) so P2P can work behind NAT/firewalls.
+            Steamworks.SteamNetworkingUtils.InitRelayNetworkAccess();
+            MelonLogger.Msg("SteamNetworking: Relay network access requested.");
         }
 
         public override void OnUpdate()
