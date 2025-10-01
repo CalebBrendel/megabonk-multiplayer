@@ -46,19 +46,31 @@ namespace Megabonk.Multiplayer.Net
             Instance = null;
         }
 
+        static string StateName(ESteamNetworkingConnectionState s) => s.ToString();
+
+        void LogConnInfo(string who, HSteamNetConnection h, SteamNetConnectionInfo_t info)
+        {
+            MelonLoader.MelonLogger.Msg(
+                $"{who}: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' from={info.m_identityRemote.GetSteamID()}");
+        }
+
         void OnConnChanged(SteamNetConnectionStatusChangedCallback_t ev)
         {
             var info = ev.m_info;
+            LogConnInfo("Host.ConnChanged", ev.m_hConn, info);
+
             switch (info.m_eState)
             {
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connecting:
                     SteamNetworkingSockets.AcceptConnection(ev.m_hConn);
                     break;
+
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connected:
                     _clients.Add(ev.m_hConn);
                     _clientIds[ev.m_hConn] = info.m_identityRemote.GetSteamID();
                     SendHello(ev.m_hConn);
                     break;
+
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ClosedByPeer:
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
                     _clients.Remove(ev.m_hConn);
@@ -99,7 +111,6 @@ namespace Megabonk.Multiplayer.Net
 
         void BroadcastPlayerState()
         {
-            // NEW: don’t send until we have a valid player ref (avoids IL2CPP span path)
             if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot))
                 return;
 
@@ -116,14 +127,12 @@ namespace Megabonk.Multiplayer.Net
 
         public void Tick()
         {
-            // receive
             foreach (var c in _clients.ToArray())
             {
                 int got = NetCommon.Receive(c, ref _rx);
                 if (got > 0) ProcessPacket(c, _rx, got);
             }
 
-            // send @ ~10 Hz
             _stateTimer += Time.deltaTime;
             if (_stateTimer >= 0.1f)
             {
