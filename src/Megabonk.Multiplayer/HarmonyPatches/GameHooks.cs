@@ -7,8 +7,9 @@ using Steamworks;
 namespace Megabonk.Multiplayer.HarmonyPatches
 {
     /// <summary>
-    /// Finds and caches the local player Transform without using tag lookups.
-    /// Uses Camera.main ancestry and root-object name scanning (IL2CPP-safe).
+    /// Finds and caches the local player Transform without using tag lookups
+    /// or Scene.GetRootGameObjects (which can be stripped in IL2CPP).
+    /// Uses Camera.main ancestry and a root scan built from FindObjectsOfType.
     /// </summary>
     public static class GameHooks
     {
@@ -21,7 +22,6 @@ namespace Megabonk.Multiplayer.HarmonyPatches
 
         public static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            // Rebind on scene change (logs once if found)
             TryAutoBind(verbose: true);
         }
 
@@ -49,13 +49,14 @@ namespace Megabonk.Multiplayer.HarmonyPatches
                 if (Bind(t, "camera-parent", verbose)) return true;
             }
 
-            // 2) Root objects with "player" in name (case-insensitive)
-            var scene = SceneManager.GetActiveScene();
-            var roots = scene.IsValid() ? scene.GetRootGameObjects() : null;
-            if (roots != null)
+            // 2) Root objects scan (IL2CPP-safe): use FindObjectsOfType<Transform>()
+            var scn = SceneManager.GetActiveScene();
+            var roots = GetSceneRootsSafe(scn);
+            if (roots != null && roots.Length > 0)
             {
-                foreach (var go in roots)
+                for (int i = 0; i < roots.Length; i++)
                 {
+                    var go = roots[i];
                     if (go == null) continue;
                     var name = go.name ?? "";
                     var lower = name.ToLowerInvariant();
@@ -116,6 +117,44 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             }
             avatar.transform.position = pos;
             avatar.transform.rotation = rot;
+        }
+
+        /// <summary>
+        /// IL2CPP-safe "get scene roots" using FindObjectsOfType instead of Scene.GetRootGameObjects().
+        /// </summary>
+        private static GameObject[] GetSceneRootsSafe(Scene scn)
+        {
+            try
+            {
+                var all = Object.FindObjectsOfType<Transform>(); // active objects only (that’s fine)
+                // First pass: count roots in this scene
+                int count = 0;
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var t = all[i];
+                    if (t == null) continue;
+                    var go = t.gameObject;
+                    if (t.parent == null && go.scene.handle == scn.handle) count++;
+                }
+                if (count == 0) return System.Array.Empty<GameObject>();
+
+                var result = new GameObject[count];
+                int idx = 0;
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var t = all[i];
+                    if (t == null) continue;
+                    var go = t.gameObject;
+                    if (t.parent == null && go.scene.handle == scn.handle)
+                        result[idx++] = go;
+                }
+                return result;
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[MP] GetSceneRootsSafe failed: {ex.GetType().Name}: {ex.Message}");
+                return System.Array.Empty<GameObject>();
+            }
         }
     }
 }
