@@ -86,7 +86,7 @@ namespace MegabonkMultiplayer.Net
 
       var peers = _manager.ConnectedPeerList;
       for (int i = 0; i < peers.Count; i++)
-        peers[i].Send(w, DeliveryMethod.UnreliableSequenced);
+        peers[i].Send(w, DeliveryMethod.Sequenced);
     }
 
     public static bool TryGetHostTransform(out Vector3 pos, out Quaternion rot)
