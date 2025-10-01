@@ -3,6 +3,7 @@
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"
           Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
 
+  <!-- Basic project settings -->
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -17,7 +18,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
 
-  <!-- Output paths per configuration -->
+  <!-- Output folders -->
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <OutputPath>..\..\build\Debug\</OutputPath>
   </PropertyGroup>
@@ -25,6 +26,7 @@
     <OutputPath>..\..\build\Release\</OutputPath>
   </PropertyGroup>
 
+  <!-- Source files -->
   <ItemGroup>
     <Compile Include="MegabonkMultiplayer.cs" />
     <Compile Include="SteamLobby.cs" />
@@ -35,34 +37,73 @@
     <Compile Include="HarmonyPatches\GameHooks.cs" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- Figure out repo root and libs folder based on the csproj location -->
+  <PropertyGroup>
+    <!-- Directory containing this .csproj -->
+    <ThisProjDir>$(MSBuildThisFileDirectory)</ThisProjDir>
+    <!-- Repo root = two levels up from this project (adjust if you move things) -->
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(ThisProjDir)..\..\'))</RepoRoot>
+    <LibsDir>$(RepoRoot)libs\</LibsDir>
+
+    <!-- Prefer net35 if present; otherwise net6 -->
+    <MelonNet35Dir>$(LibsDir)MelonLoader\net35\</MelonNet35Dir>
+    <MelonNet6Dir>$(LibsDir)MelonLoader\net6\</MelonNet6Dir>
+    <UseMelonNet35 Condition="Exists('$(MelonNet35Dir)MelonLoader.dll')">true</UseMelonNet35>
+    <UseMelonNet6 Condition="'$(UseMelonNet35)' != 'true' And Exists('$(MelonNet6Dir)MelonLoader.dll')">true</UseMelonNet6>
+
+    <SteamworksDir>$(LibsDir)Steamworks.NET\</SteamworksDir>
+  </PropertyGroup>
+
+  <!-- References: one block for net35, one for net6; MSBuild picks by Condition -->
+  <ItemGroup Condition="'$(UseMelonNet35)' == 'true'">
     <Reference Include="MelonLoader">
-      <HintPath>$(GameDir)\MelonLoader\MelonLoader.dll</HintPath>
+      <HintPath>$(MelonNet35Dir)MelonLoader.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>$(GameDir)\MelonLoader\Managed\0Harmony.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(MelonNet35Dir)0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>$(GameDir)\MelonLoader\Managed\UnityEngine.dll</HintPath>
+      <HintPath>$(MelonNet35Dir)UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Steamworks.NET">
-      <HintPath>$(SolutionDir)\libs\Steamworks.NET.dll</HintPath>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(MelonNet35Dir)UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseMelonNet6)' == 'true'">
+    <Reference Include="MelonLoader">
+      <HintPath>$(MelonNet6Dir)MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(MelonNet6Dir)0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(MelonNet6Dir)UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(MelonNet6Dir)UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Steamworks.NET (from repo) -->
+  <ItemGroup>
+    <Reference Include="Steamworks.NET">
+      <HintPath>$(SteamworksDir)Steamworks.NET.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Standard .NET references -->
     <Reference Include="System" />
     <Reference Include="System.Core" />
   </ItemGroup>
-
-  <!-- Set this when building so references resolve -->
-  <PropertyGroup>
-    <GameDir Condition=" '$(GameDir)' == '' ">C:\Program Files\Steam\steamapps\common\Megabonk</GameDir>
-  </PropertyGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
