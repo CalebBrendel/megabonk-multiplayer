@@ -7,9 +7,9 @@ using Steamworks;
 namespace Megabonk.Multiplayer.HarmonyPatches
 {
     /// <summary>
-    /// Finds and caches the local player Transform without using tag lookups
-    /// or Scene.GetRootGameObjects (which can be stripped in IL2CPP).
-    /// Uses Camera.main ancestry and a root scan built from FindObjectsOfType.
+    /// Finds and caches the local player Transform without tag lookups
+    /// or Scene.GetRootGameObjects (stripped on some IL2CPP builds).
+    /// Uses Camera.main ancestry and a root scan built from Resources.FindObjectsOfTypeAll.
     /// </summary>
     public static class GameHooks
     {
@@ -25,10 +25,6 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             TryAutoBind(verbose: true);
         }
 
-        /// <summary>
-        /// Attempt to discover and cache the local player Transform.
-        /// Returns true if bound this call or already bound.
-        /// </summary>
         public static bool TryAutoBind(bool verbose = false)
         {
             if (LocalPlayer != null && LocalPlayer) return true;
@@ -44,12 +40,11 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             if (Camera.main != null)
             {
                 var t = Camera.main.transform;
-                // climb up a few levels to a plausible rig root
                 for (int i = 0; i < 3 && t.parent != null; i++) t = t.parent;
                 if (Bind(t, "camera-parent", verbose)) return true;
             }
 
-            // 2) Root objects scan (IL2CPP-safe): use FindObjectsOfType<Transform>()
+            // 2) Root objects scan (IL2CPP-safe) via Resources.FindObjectsOfTypeAll(typeof(Transform))
             var scn = SceneManager.GetActiveScene();
             var roots = GetSceneRootsSafe(scn);
             if (roots != null && roots.Length > 0)
@@ -81,10 +76,6 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             return true;
         }
 
-        /// <summary>
-        /// Read cached local player transform (no heavy lookups at runtime).
-        /// If not bound, attempts a throttled auto-bind.
-        /// </summary>
         public static bool TryGetLocalPlayerPos(out Quaternion rot)
         {
             if (LocalPlayer == null || !LocalPlayer)
@@ -102,9 +93,6 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             return false;
         }
 
-        /// <summary>
-        /// Spawns/updates a simple remote avatar (capsule) to visualize the other player.
-        /// </summary>
         public static void ApplyRemotePlayerState(CSteamID who, Vector3 pos, Quaternion rot)
         {
             var tag = "RemotePlayer_" + who.m_SteamID;
@@ -113,39 +101,46 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             {
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 avatar.name = tag;
-                // No collider toggles here to avoid requiring PhysicsModule.
+                // No collider toggles here to avoid needing PhysicsModule.
             }
             avatar.transform.position = pos;
             avatar.transform.rotation = rot;
         }
 
         /// <summary>
-        /// IL2CPP-safe "get scene roots" using FindObjectsOfType instead of Scene.GetRootGameObjects().
+        /// IL2CPP-safe "get scene roots" using Resources.FindObjectsOfTypeAll instead of Scene.GetRootGameObjects().
+        /// Filters out objects not in the active scene and those hidden from hierarchy.
         /// </summary>
         private static GameObject[] GetSceneRootsSafe(Scene scn)
         {
             try
             {
-                var all = Object.FindObjectsOfType<Transform>(); // active objects only (that’s fine)
-                // First pass: count roots in this scene
+                var objs = Resources.FindObjectsOfTypeAll(typeof(Transform)); // returns UnityEngine.Object[]
+                // First pass: count
                 int count = 0;
-                for (int i = 0; i < all.Length; i++)
+                for (int i = 0; i < objs.Length; i++)
                 {
-                    var t = all[i];
+                    var t = objs[i] as Transform;
                     if (t == null) continue;
                     var go = t.gameObject;
-                    if (t.parent == null && go.scene.handle == scn.handle) count++;
+                    if (t.parent == null &&
+                        go.scene.handle == scn.handle &&
+                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
+                        count++;
                 }
                 if (count == 0) return System.Array.Empty<GameObject>();
 
+                // Second pass: collect
                 var result = new GameObject[count];
                 int idx = 0;
-                for (int i = 0; i < all.Length; i++)
+                for (int i = 0; i < objs.Length; i++)
                 {
-                    var t = all[i];
+                    var t = objs[i] as Transform;
                     if (t == null) continue;
                     var go = t.gameObject;
-                    if (t.parent == null && go.scene.handle == scn.handle)
+                    if (t.parent == null &&
+                        go.scene.handle == scn.handle &&
+                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
                         result[idx++] = go;
                 }
                 return result;
