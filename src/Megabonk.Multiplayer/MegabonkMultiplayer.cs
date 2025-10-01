@@ -2,10 +2,11 @@ using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Megabonk.Multiplayer.HarmonyPatches; // GameHooks
+using Megabonk.Multiplayer.HarmonyPatches;   // GameHooks
 using Megabonk.Multiplayer.Net;
+using Megabonk.Multiplayer.Debugging;        // SceneDumper (F12)
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.2", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.3", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -15,6 +16,7 @@ namespace Megabonk.Multiplayer
         private static bool _steamOk;
         private HarmonyLib.Harmony _harmony;
 
+        // scene-change tracker (avoids UnityAction<T1,T2> AOT issues)
         private static int _lastSceneIndex = -1;
         private static string _lastSceneName = null;
 
@@ -67,7 +69,7 @@ namespace Megabonk.Multiplayer
 
             Steamworks.SteamAPI.RunCallbacks();
 
-            // Scene change poll (no UnityAction<T1,T2>)
+            // Scene change poll (replaces SceneManager.sceneLoaded subscription)
             var scn = SceneManager.GetActiveScene();
             if (scn.buildIndex != _lastSceneIndex || scn.name != _lastSceneName)
             {
@@ -94,6 +96,12 @@ namespace Megabonk.Multiplayer
             {
                 var ok = GameHooks.TryAutoBind(verbose: true);
                 if (!ok) MelonLogger.Msg("[MP] Auto-bind didn't find a player yet. Try again after the scene fully loads.");
+            }
+
+            // NEW: Scene dumper (helps find the real player object/path)
+            if (Input.GetKeyDown(KeyCode.F12))
+            {
+                SceneDumper.Dump(3); // raise depth to 4–5 if you want more detail
             }
 
             if (Input.GetKeyDown(KeyCode.F7))
