@@ -8,7 +8,8 @@ namespace Megabonk.Multiplayer.HarmonyPatches
 {
     /// <summary>
     /// Player binder that avoids stripped APIs. Binds by following Camera.main up to a plausible rig root.
-    /// Clears and rebinds on scene changes; F8 can force a rebind.
+    /// Clears and rebinds on scene changes; F8 can force a rebind. Also renders a simple cyan capsule
+    /// for remote players so you can verify movement sync.
     /// </summary>
     public static class GameHooks
     {
@@ -67,19 +68,18 @@ namespace Megabonk.Multiplayer.HarmonyPatches
                 return false;
             _lastBindAttemptTime = Time.unscaledTime;
 
-            // --- Heuristic: use the camera rig (works for menu and gameplay; we rebind on scene change) ---
-            Transform candidate = null;
+            // --- Heuristic 1: use the camera rig (works for many games) ---
             if (Camera.main != null)
             {
-                candidate = Camera.main.transform;
                 // climb up a few levels to a plausible rig root
-                for (int i = 0; i < 3 && candidate.parent != null; i++)
-                    candidate = candidate.parent;
+                var t = Camera.main.transform;
+                for (int i = 0; i < 3 && t.parent != null; i++)
+                    t = t.parent;
 
-                if (Bind(candidate, "camera-parent", verbose))
+                if (Bind(t, "camera-parent", verbose))
                     return true;
 
-                // If the camera has a parent, try siblings with "player"/"character" in the name
+                // Heuristic 2: try siblings with "player"/"character"/"pawn" in the name
                 var parent = Camera.main.transform.parent;
                 if (parent != null)
                 {
@@ -132,7 +132,7 @@ namespace Megabonk.Multiplayer.HarmonyPatches
         }
 
         /// <summary>
-        /// Spawns/updates a simple remote avatar (capsule) to visualize the other player.
+        /// Spawns/updates a simple remote avatar (cyan capsule) to visualize the other player.
         /// </summary>
         public static void ApplyRemotePlayerState(CSteamID who, Vector3 pos, Quaternion rot)
         {
@@ -147,16 +147,18 @@ namespace Megabonk.Multiplayer.HarmonyPatches
                 var rend = avatar.GetComponent<Renderer>();
                 if (rend != null)
                 {
-                     var shader = Shader.Find("Standard");
-                     if (shader != null) rend.material = new Material(shader);
-                     rend.material.color = Color.cyan;
+                    var shader = Shader.Find("Standard");
+                    if (shader != null) rend.material = new Material(shader);
+                    rend.material.color = Color.cyan;
                 }
                 avatar.transform.localScale = Vector3.one * 1.2f;
 
-                MelonLoader.MelonLogger.Msg($"[MP] Spawned remote avatar: {tag}");
+                MelonLogger.Msg($"[MP] Spawned remote avatar: {tag}");
             }
 
             // update transform each tick
             avatar.transform.position = pos;
             avatar.transform.rotation = rot;
+        }
+    }
 }
