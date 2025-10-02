@@ -80,6 +80,11 @@
       <HintPath>$(MelonNet35Dir)UnityEngine.IMGUIModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Il2CppInterop for ClassInjector.RegisterTypeInIl2Cpp -->
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(MelonNet35Dir)Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- MelonLoader refs (net6) -->
@@ -107,6 +112,11 @@
     <!-- IMGUI for GUI/GUILayout -->
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>$(MelonNet6Dir)UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Il2CppInterop for ClassInjector.RegisterTypeInIl2Cpp -->
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(MelonNet6Dir)Il2CppInterop.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
