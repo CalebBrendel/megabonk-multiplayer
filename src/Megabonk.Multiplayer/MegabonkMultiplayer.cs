@@ -91,11 +91,11 @@ namespace Megabonk.Multiplayer
                 NetHost.Instance.BroadcastLoadLevel(scene);
             }
 
-            // Manual player bind if auto-bind missed it
+                // Manual player bind if auto-bind missed it
             if (Input.GetKeyDown(KeyCode.F8))
             {
-                var ok = GameHooks.TryAutoBind(verbose: true);
-                if (!ok) MelonLogger.Msg("[MP] Auto-bind didn't find a player yet. Try again after the scene fully loads.");
+                var ok = GameHooks.ForceRebind(verbose: true);
+                if (!ok) MelonLogger.Msg("[MP] Rebind attempt didn't find a player yet. Try again after the scene fully loads.");
             }
 
             // Scene dumper (find the real player root) — now on F5
