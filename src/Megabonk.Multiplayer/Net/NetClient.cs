@@ -13,8 +13,8 @@ namespace Megabonk.Multiplayer.Net
     {
         public static NetClient Instance { get; private set; }
 
-        // Your Steamworks.NET build returns an int handle from ConnectP2P.
-        private int _connHandle;
+        // Store the actual handle type used by your Steamworks.NET build
+        private HSteamNetConnection _conn;
 
         private readonly MemoryStream _ms = new MemoryStream(256);
         private readonly BinaryWriter _w;
@@ -41,30 +41,23 @@ namespace Megabonk.Multiplayer.Net
         {
             _hostId = host;
 
-            var cfg = new SteamNetworkingConfigValue_t[0];
+            var cfg = Array.Empty<SteamNetworkingConfigValue_t>();
             var ident = new SteamNetworkingIdentity();
             ident.SetSteamID(host);
 
-            // int handle per your Steamworks.NET signature
-            _connHandle = SteamNetworkingSockets.ConnectP2P(ref ident, 0, cfg.Length, cfg);
+            // Your Steamworks.NET signature returns HSteamNetConnection
+            _conn = SteamNetworkingSockets.ConnectP2P(ref ident, 0, cfg.Length, cfg);
             MelonLogger.Msg("[Megabonk Multiplayer] Client connecting to host...");
         }
 
-        private static bool IsValid(int handle) => handle != 0;
-        private static HSteamNetConnection Wrap(int handle)
-        {
-            var h = new HSteamNetConnection();
-            h.m_HSteamNetConnection = handle;
-            return h;
-        }
+        private static bool IsValid(HSteamNetConnection h) => h.m_HSteamNetConnection != 0;
 
         public void Shutdown()
         {
-            if (IsValid(_connHandle))
-            {
-                SteamNetworkingSockets.CloseConnection(Wrap(_connHandle), 1000, "client shutdown", false);
-            }
-            _connHandle = 0;
+            if (IsValid(_conn))
+                SteamNetworkingSockets.CloseConnection(_conn, 1000, "client shutdown", false);
+
+            _conn.m_HSteamNetConnection = 0;
             Instance = null;
         }
 
@@ -129,7 +122,7 @@ namespace Megabonk.Multiplayer.Net
 
         private void SendMsg(MemoryStream ms)
         {
-            if (!IsValid(_connHandle)) return;
+            if (!IsValid(_conn)) return;
 
             byte[] payload = ms.ToArray();
             IntPtr ptr = Marshal.AllocHGlobal(payload.Length);
@@ -137,7 +130,7 @@ namespace Megabonk.Multiplayer.Net
             {
                 Marshal.Copy(payload, 0, ptr, payload.Length);
                 SteamNetworkingSockets.SendMessageToConnection(
-                    Wrap(_connHandle),
+                    _conn,
                     ptr,
                     (uint)payload.Length,
                     0,
@@ -159,7 +152,6 @@ namespace Megabonk.Multiplayer.Net
             if (!GameHooks.TryGetLocalPlayerPos(out var rot)) return;
             var pos = GameHooks.LastPos;
 
-            // Send client position to host
             _ms.Position = 0; _ms.SetLength(0);
             MsgIO.WriteHeader(_w, Op.PlayerState);
             MsgIO.WriteVec3(_w, pos);
