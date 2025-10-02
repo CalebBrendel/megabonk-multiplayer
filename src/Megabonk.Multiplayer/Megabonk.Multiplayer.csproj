@@ -23,6 +23,10 @@
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
+
+    <!-- Build hygiene -->
+    <Deterministic>true</Deterministic>
+    <Optimize Condition="'$(Configuration)'=='Release'">true</Optimize>
   </PropertyGroup>
 
   <!-- Output folders -->
@@ -44,80 +48,144 @@
     <RepoRoot>$([System.IO.Path]::GetFullPath('$(ThisProjDir)..\..\'))</RepoRoot>
     <LibsDir>$(RepoRoot)libs\</LibsDir>
 
-    <!-- Prefer net35 if present; else net6 -->
+    <!-- Optional: exact game Unity Il2Cpp dummy assemblies (preferred if present) -->
+    <!-- Put your dumped/dummy UnityEngine.*.dlls here -->
+    <GameUnityDir>$(LibsDir)UnityIl2Cpp\</GameUnityDir>
+    <UseGameUnity Condition="Exists('$(GameUnityDir)UnityEngine.CoreModule.dll')">true</UseGameUnity>
+
+    <!-- MelonLoader packs as fallbacks -->
     <MelonNet35Dir>$(LibsDir)MelonLoader\net35\</MelonNet35Dir>
     <MelonNet6Dir>$(LibsDir)MelonLoader\net6\</MelonNet6Dir>
-    <UseMelonNet35 Condition="Exists('$(MelonNet35Dir)MelonLoader.dll')">true</UseMelonNet35>
-    <UseMelonNet6 Condition="'$(UseMelonNet35)' != 'true' And Exists('$(MelonNet6Dir)MelonLoader.dll')">true</UseMelonNet6>
+    <UseMelonNet35 Condition="'$(UseGameUnity)' != 'true' And Exists('$(MelonNet35Dir)MelonLoader.dll')">true</UseMelonNet35>
+    <UseMelonNet6 Condition="'$(UseGameUnity)' != 'true' And '$(UseMelonNet35)' != 'true' And Exists('$(MelonNet6Dir)MelonLoader.dll')">true</UseMelonNet6>
 
     <SteamworksDir>$(LibsDir)Steamworks.NET\</SteamworksDir>
   </PropertyGroup>
 
-  <!-- MelonLoader refs (net35) -->
+  <!-- PREFERRED: Exact game Unity dummy assemblies -->
+  <ItemGroup Condition="'$(UseGameUnity)' == 'true'">
+    <!-- MelonLoader + Harmony -->
+    <Reference Include="MelonLoader">
+      <HintPath>$(MelonNet6Dir)MelonLoader.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(MelonNet6Dir)0Harmony.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+
+    <!-- Il2Cpp interop used by MelonLoader -->
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(MelonNet6Dir)Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+
+    <!-- Exact Unity modules from the game (dummy Il2Cpp DLLs) -->
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameUnityDir)UnityEngine.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameUnityDir)UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(GameUnityDir)UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <!-- CRITICAL for GUI/GUILayout/GUIContent -->
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameUnityDir)UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+  </ItemGroup>
+
+  <!-- MelonLoader refs (net35 fallback) -->
   <ItemGroup Condition="'$(UseMelonNet35)' == 'true'">
     <Reference Include="MelonLoader">
       <HintPath>$(MelonNet35Dir)MelonLoader.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(MelonNet35Dir)0Harmony.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="UnityEngine">
       <HintPath>$(MelonNet35Dir)UnityEngine.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(MelonNet35Dir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="UnityEngine.InputLegacyModule">
       <HintPath>$(MelonNet35Dir)UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <!-- IMGUI for GUI/GUILayout -->
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>$(MelonNet35Dir)UnityEngine.IMGUIModule.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <!-- Il2CppInterop for ClassInjector.RegisterTypeInIl2Cpp -->
     <Reference Include="Il2CppInterop.Runtime">
       <HintPath>$(MelonNet35Dir)Il2CppInterop.Runtime.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
   </ItemGroup>
 
-  <!-- MelonLoader refs (net6) -->
+  <!-- MelonLoader refs (net6 fallback) -->
   <ItemGroup Condition="'$(UseMelonNet6)' == 'true'">
     <Reference Include="MelonLoader">
       <HintPath>$(MelonNet6Dir)MelonLoader.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(MelonNet6Dir)0Harmony.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="UnityEngine">
       <HintPath>$(MelonNet6Dir)UnityEngine.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(MelonNet6Dir)UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <Reference Include="UnityEngine.InputLegacyModule">
       <HintPath>$(MelonNet6Dir)UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <!-- IMGUI for GUI/GUILayout -->
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>$(MelonNet6Dir)UnityEngine.IMGUIModule.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
     <!-- Il2CppInterop for ClassInjector.RegisterTypeInIl2Cpp -->
     <Reference Include="Il2CppInterop.Runtime">
       <HintPath>$(MelonNet6Dir)Il2CppInterop.Runtime.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
   </ItemGroup>
 
@@ -126,6 +194,7 @@
     <Reference Include="Steamworks.NET">
       <HintPath>$(SteamworksDir)Steamworks.NET.dll</HintPath>
       <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
     </Reference>
 
     <!-- .NET -->
