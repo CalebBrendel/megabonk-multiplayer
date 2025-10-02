@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using MelonLoader;
 using Steamworks;
 using UnityEngine;
@@ -38,15 +39,7 @@ namespace Megabonk.Multiplayer.Net
         {
             MelonLogger.Msg("[Megabonk Multiplayer] NetHost: listening P2P");
             SteamNetworkingUtils.InitRelayNetworkAccess();
-
-            var cfg = new SteamNetworkingConfigValue_t[0];
-            var ident = new SteamNetworkingIdentity();
-            ident.Clear();
-
-            // Listen socket for P2P connections
-            var iface = SteamNetworkingSockets.CreateListenSocketP2P(0, cfg.Length, cfg);
-            // We rely on Lobby + ConnectionStatusChanged callback to accept peers
-            // (this hook is already set in SteamLobby.cs)
+            // The actual accept happens via SteamLobby's connection status callback.
         }
 
         public void OnNewConnection(CSteamID peer, HSteamNetConnection hconn)
@@ -105,19 +98,14 @@ namespace Megabonk.Multiplayer.Net
 
         private void BroadcastReadySummary()
         {
-            // Host echoes each client's readiness back to them? For now just log counts.
             var (r, t) = GetReadyCounts();
             MelonLogger.Msg($"[MP][Host] Ready {r}/{t}");
-            // (Optional: send to clients if you want them to see others' readiness)
         }
 
         public void OnMsg(CSteamID from, Op op, BinaryReader r)
         {
             switch (op)
             {
-                case Op.Hello:
-                    // handled in SteamLobby; not expected here
-                    break;
                 case Op.Ready:
                 {
                     bool val = r.ReadBoolean();
@@ -126,26 +114,21 @@ namespace Megabonk.Multiplayer.Net
                     BroadcastReadySummary();
                     break;
                 }
-                default:
-                    break;
             }
         }
 
         // ---- LOAD / SEED ----
         public void StartCoop(string sceneName)
         {
-            // Choose/compute a seed and sync it
             _seed = (int)((DateTime.UtcNow.Ticks ^ (long)SteamUser.GetSteamID().m_SteamID) & 0x7fffffff);
             UnityEngine.Random.InitState(_seed);
 
-            // Tell clients first (seed), then scene
             foreach (var kv in _conns)
             {
                 SendSeed(kv.Value, _seed);
                 SendLoadLevel(kv.Value, sceneName);
             }
 
-            // Load locally last
             MelonLogger.Msg($"[MP][Host] Starting co-op: scene='{sceneName}', seed={_seed}");
             SceneManager.LoadScene(sceneName);
         }
@@ -182,21 +165,28 @@ namespace Megabonk.Multiplayer.Net
             SendMsg(to, _ms);
         }
 
-        private void SendMsg(HSteamNetConnection to, MemoryStream ms)
+        private static void SendMsg(HSteamNetConnection to, MemoryStream ms)
         {
-            var len = (int)ms.Length;
-            var buf = ms.GetBuffer();
-            var send = new SteamNetworkingMessage_t();
-            send.m_pData = System.Runtime.InteropServices.Marshal.UnsafeAddrOfPinnedArrayElement(buf, 0);
-            send.m_cbSize = len;
-            send.m_conn = to;
-            send.m_nFlags = 0;
-            SteamNetworkingSockets.SendMessages(1, new[] { send }, out var _);
+            byte[] payload = ms.ToArray();
+            IntPtr ptr = Marshal.AllocHGlobal(payload.Length);
+            try
+            {
+                Marshal.Copy(payload, 0, ptr, payload.Length);
+                SteamNetworkingSockets.SendMessageToConnection(
+                    to,
+                    ptr,
+                    (uint)payload.Length,
+                    0,
+                    out long _);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
         }
 
         public void Tick()
         {
-            // host may also send periodic PlayerState if you want host’s avatar on clients
             var now = Time.unscaledTime;
             if (now - _lastSendTime < 0.1f) return; // ~10 Hz
             _lastSendTime = now;
@@ -204,7 +194,6 @@ namespace Megabonk.Multiplayer.Net
             if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot)) return;
             var pos = HarmonyPatches.GameHooks.LastPos;
 
-            // broadcast PlayerState to all
             foreach (var kv in _conns)
             {
                 _ms.Position = 0; _ms.SetLength(0);
