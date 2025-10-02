@@ -1,9 +1,11 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using MelonLoader;
 using Steamworks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Megabonk.Multiplayer.HarmonyPatches; // GameHooks
 
 namespace Megabonk.Multiplayer.Net
 {
@@ -11,7 +13,8 @@ namespace Megabonk.Multiplayer.Net
     {
         public static NetClient Instance { get; private set; }
 
-        private HSteamNetConnection _conn;
+        // store the raw int handle; wrap it when calling Steam
+        private int _connHandle;
         private readonly MemoryStream _ms = new MemoryStream(256);
         private readonly BinaryWriter _w;
         private float _lastSendTime;
@@ -36,15 +39,28 @@ namespace Megabonk.Multiplayer.Net
             var cfg = new SteamNetworkingConfigValue_t[0];
             var ident = new SteamNetworkingIdentity();
             ident.SetSteamID(host);
-            _conn = SteamNetworkingSockets.ConnectP2P(ref ident, 0, cfg.Length, cfg);
+
+            // In your Steamworks.NET build, this returns an int handle (per compiler error).
+            _connHandle = SteamNetworkingSockets.ConnectP2P(ref ident, 0, cfg.Length, cfg);
             MelonLogger.Msg("[Megabonk Multiplayer] Client connecting to host...");
+        }
+
+        private static bool IsValid(int handle) => handle != 0;
+        private static HSteamNetConnection Wrap(int handle)
+        {
+            // HSteamNetConnection is a struct with an int field in Steamworks.NET
+            var h = new HSteamNetConnection();
+            h.m_HSteamNetConnection = handle;
+            return h;
         }
 
         public void Shutdown()
         {
-            if (_conn != 0)
-                SteamNetworkingSockets.CloseConnection(_conn, 1000, "client shutdown", false);
-            _conn = 0;
+            if (IsValid(_connHandle))
+            {
+                SteamNetworkingSockets.CloseConnection(Wrap(_connHandle), 1000, "client shutdown", false);
+            }
+            _connHandle = 0;
             Instance = null;
         }
 
@@ -68,10 +84,12 @@ namespace Megabonk.Multiplayer.Net
                     MelonLogger.Msg($"[MP][Client] Seed synced: {_seed}");
                     break;
                 case Op.LoadLevel:
+                {
                     var scene = MsgIO.ReadString(r);
                     MelonLogger.Msg($"[MP][Client] Loading scene '{scene}' (seed={_seed})");
                     SceneManager.LoadScene(scene);
                     break;
+                }
                 case Op.PlayerState:
                 {
                     var pos = MsgIO.ReadVec3(r);
@@ -79,8 +97,6 @@ namespace Megabonk.Multiplayer.Net
                     GameHooks.ApplyRemotePlayerState(SteamUser.GetSteamID(), pos, rot);
                     break;
                 }
-                default:
-                    break;
             }
         }
 
@@ -103,15 +119,24 @@ namespace Megabonk.Multiplayer.Net
 
         private void SendMsg(MemoryStream ms)
         {
-            if (_conn == 0) return;
-            var len = (int)ms.Length;
-            var buf = ms.GetBuffer();
-            var send = new SteamNetworkingMessage_t();
-            send.m_pData = System.Runtime.InteropServices.Marshal.UnsafeAddrOfPinnedArrayElement(buf, 0);
-            send.m_cbSize = len;
-            send.m_conn = _conn;
-            send.m_nFlags = 0;
-            SteamNetworkingSockets.SendMessages(1, new[] { send }, out var _);
+            if (!IsValid(_connHandle)) return;
+
+            byte[] payload = ms.ToArray();
+            IntPtr ptr = Marshal.AllocHGlobal(payload.Length);
+            try
+            {
+                Marshal.Copy(payload, 0, ptr, payload.Length);
+                SteamNetworkingSockets.SendMessageToConnection(
+                    Wrap(_connHandle),
+                    ptr,
+                    (uint)payload.Length,
+                    0,
+                    out long _);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
         }
 
         public void Tick()
@@ -120,10 +145,9 @@ namespace Megabonk.Multiplayer.Net
             if (now - _lastSendTime < 0.1f) return; // ~10 Hz
             _lastSendTime = now;
 
-            if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot)) return;
-            var pos = HarmonyPatches.GameHooks.LastPos;
+            if (!GameHooks.TryGetLocalPlayerPos(out var rot)) return;
+            var pos = GameHooks.LastPos;
 
-            // send PlayerState to host
             _ms.Position = 0; _ms.SetLength(0);
             MsgIO.WriteHeader(_w, Op.PlayerState);
             MsgIO.WriteVec3(_w, pos);
