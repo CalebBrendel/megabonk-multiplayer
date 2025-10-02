@@ -4,16 +4,24 @@ using Megabonk.Multiplayer.Net;
 
 namespace Megabonk.Multiplayer.UI
 {
+    // Registered via ClassInjector.RegisterTypeInIl2Cpp<MpOverlay>() in MegabonkMultiplayer.OnInitializeMelon
     public class MpOverlay : MonoBehaviour
     {
         private static MpOverlay _inst;
         private static bool _visible;
-        private Rect _win = new Rect(40, 80, 420, 260);
-        private string _sceneName = "GeneratedMap"; // default; matches the log you shared
+
+        // Window rect (screen space)
+        private Rect _win = new Rect(40, 80, 440, 280);
+        // Simple drag handling (avoid GUI.Window/WindowFunction)
+        private bool _dragging;
+        private Vector2 _dragStart;
+
+        private string _sceneName = "GeneratedMap"; // default
 
         public static void Boot()
         {
             if (_inst != null) return;
+
             var go = new GameObject("[MP Overlay]");
             DontDestroyOnLoad(go);
             _inst = go.AddComponent<MpOverlay>();
@@ -22,15 +30,65 @@ namespace Megabonk.Multiplayer.UI
 
         public static void Toggle() => _visible = !_visible;
 
-        void OnGUI()
+        private void OnGUI()
         {
             if (!_visible) return;
 
-            _win = GUI.Window(43210, _win, DrawWin, "Megabonk Multiplayer (Mod)");
+            // Draw movable panel without GUI.Window (no WindowFunction delegate)
+            DrawPanel();
         }
 
-        void DrawWin(int id)
+        private void DrawPanel()
         {
+            // Panel background
+            GUI.depth = 0;
+            GUI.color = Color.white;
+
+            // Group everything so local coordinates start at (0,0)
+            GUI.BeginGroup(_win);
+
+            // Backing box
+            GUI.Box(new Rect(0, 0, _win.width, _win.height), GUIContent.none);
+
+            // Title bar
+            var titleBar = new Rect(0, 0, _win.width, 24f);
+            GUI.Box(titleBar, "Megabonk Multiplayer (Mod)");
+
+            // Close button
+            var closeRect = new Rect(_win.width - 26f, 2f, 22f, 20f);
+            if (GUI.Button(closeRect, "X"))
+            {
+                _visible = false;
+                GUI.EndGroup();
+                return;
+            }
+
+            // Dragging (simple)
+            var e = Event.current;
+            if (e != null)
+            {
+                if (e.type == EventType.MouseDown && titleBar.Contains(e.mousePosition))
+                {
+                    _dragging = true;
+                    _dragStart = e.mousePosition;
+                    e.Use();
+                }
+                else if (e.type == EventType.MouseDrag && _dragging)
+                {
+                    // convert local delta to screen movement
+                    _win.x += e.delta.x;
+                    _win.y += e.delta.y;
+                    e.Use();
+                }
+                else if (e.type == EventType.MouseUp && _dragging)
+                {
+                    _dragging = false;
+                    e.Use();
+                }
+            }
+
+            // Content area
+            GUILayout.BeginArea(new Rect(8, 28, _win.width - 16, _win.height - 36));
             GUILayout.BeginVertical();
 
             GUILayout.Label(SteamLobby.IsHost ? "Role: Host" : "Role: Client");
@@ -49,9 +107,7 @@ namespace Megabonk.Multiplayer.UI
 
                 GUI.enabled = NetHost.Instance != null && NetHost.Instance.AllReady();
                 if (GUILayout.Button("Start Co-op"))
-                {
                     NetHost.Instance.StartCoop(_sceneName);
-                }
                 GUI.enabled = true;
 
                 if (GUILayout.Button("Toggle Ready (Host)"))
@@ -68,10 +124,11 @@ namespace Megabonk.Multiplayer.UI
 
             GUILayout.Space(10);
             GUILayout.Label("Hotkeys: F9 Host, F10 Invite, F11 Leave, F6 Sync Scene, F8 Rebind, F5 Dump");
-            if (GUILayout.Button("Close")) _visible = false;
 
             GUILayout.EndVertical();
-            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+            GUILayout.EndArea();
+
+            GUI.EndGroup();
         }
     }
 }
