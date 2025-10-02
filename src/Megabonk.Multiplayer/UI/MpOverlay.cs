@@ -4,15 +4,11 @@ using System;
 using MelonLoader;
 using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
-using static Megabonk.Multiplayer.UI.GuiCompat;
 using Megabonk.Multiplayer.Ready;
 
 namespace Megabonk.Multiplayer.UI
 {
-    /// <summary>
-    /// Il2Cpp-safe IMGUI overlay (no GUILayout; no GUIContent.none).
-    /// Exposes Boot() and Toggle() for the main mod to call.
-    /// </summary>
+    /// <summary>Il2Cpp-safe overlay (no GUILayout, no GUIContent.none).</summary>
     internal class MpOverlay : MonoBehaviour
     {
         private static bool _registered;
@@ -23,8 +19,11 @@ namespace Megabonk.Multiplayer.UI
 
         public static void Boot()
         {
-            EnsureRegistered();
-
+            if (!_registered)
+            {
+                ClassInjector.RegisterTypeInIl2Cpp<MpOverlay>();
+                _registered = true;
+            }
             if (_instance == null)
             {
                 _go = new GameObject("Megabonk.Multiplayer.Overlay");
@@ -43,65 +42,38 @@ namespace Megabonk.Multiplayer.UI
             if (_instance != null) _instance.enabled = show;
         }
 
-        private static void EnsureRegistered()
-        {
-            if (_registered) return;
-            ClassInjector.RegisterTypeInIl2Cpp<MpOverlay>();
-            _registered = true;
-        }
-
-        // ---------- Instance ----------
-        private bool _overlayErrored;
-
+        private bool _errored;
         private void Awake() => enabled = IsVisible;
 
         private void OnGUI()
         {
-            if (_overlayErrored || !enabled) return;
-
-            try
-            {
-                DrawPanel_NoGUILayout();
-            }
+            if (_errored || !enabled) return;
+            try { Draw(); }
             catch (Exception ex)
             {
-                _overlayErrored = true;
-                enabled = false;
+                _errored = true; enabled = false;
                 MelonLogger.Error($"[Megabonk.Multiplayer] MpOverlay.OnGUI failed; disabling overlay. {ex}");
             }
         }
 
-        private void DrawPanel_NoGUILayout()
+        private void Draw()
         {
-            const float w = 420f;
-            const float h = 220f;
-            float x = (Screen.width - w) * 0.5f;
-            float y = (Screen.height - h) * 0.5f;
+            const float w = 420f, h = 220f;
+            float x = (Screen.width - w) * 0.5f, y = (Screen.height - h) * 0.5f;
 
-            var windowRect = new Rect(x, y, w, h);
-            GUI.Box(windowRect, string.Empty);
+            GUI.Box(new Rect(x, y, w, h), string.Empty);
+            GUI.Label(new Rect(x + 12, y + 10, w - 24, 24), "Megabonk Multiplayer", GUI.skin.label);
+            GUI.Box(new Rect(x + 10, y + 36, w - 20, 1), string.Empty);
 
-            var titleRect = new Rect(x + 12f, y + 10f, w - 24f, 24f);
-            GUI.Label(titleRect, "Megabonk Multiplayer", GUI.skin.label);
-
-            GUI.Box(new Rect(x + 10f, y + 36f, w - 20f, 1f), string.Empty);
-
-            // Ready/Unready button
             string label = ReadyManager.LocalReady ? "Unready" : "Ready";
-            var readyRect = new Rect(x + 20f, y + 56f, w - 40f, 32f);
-            if (GUI.Button(readyRect, label, GUI.skin.button))
-            {
+            if (GUI.Button(new Rect(x + 20, y + 56, w - 40, 32), label, GUI.skin.button))
                 ReadyManager.SetLocalReady(!ReadyManager.LocalReady);
-            }
 
-            // Status line: "Ready X/Y" and host hint
-            var statusRect = new Rect(x + 20f, y + 96f, w - 40f, 22f);
             var status = $"Ready {ReadyManager.ReadyCount}/{ReadyManager.PlayerCount}" +
                          (ReadyManager.IsHost ? "  (Host will start automatically)" : "");
-            GUI.Label(statusRect, status, GUI.skin.label);
+            GUI.Label(new Rect(x + 20, y + 96, w - 40, 22), status, GUI.skin.label);
 
-            var closeRect = new Rect(x + w - 100f, y + h - 42f, 80f, 28f);
-            if (GUI.Button(closeRect, "Close", GUI.skin.button))
+            if (GUI.Button(new Rect(x + w - 100, y + h - 42, 80, 28), "Close", GUI.skin.button))
                 Toggle(false);
         }
     }
