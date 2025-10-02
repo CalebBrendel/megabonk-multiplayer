@@ -142,10 +142,21 @@ namespace Megabonk.Multiplayer.HarmonyPatches
             {
                 avatar = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 avatar.name = tag;
-                // Collider untouched to avoid PhysicsModule ref.
+
+                // make it easy to spot
+                var rend = avatar.GetComponent<Renderer>();
+                if (rend != null)
+                {
+                     var shader = Shader.Find("Standard");
+                     if (shader != null) rend.material = new Material(shader);
+                     rend.material.color = Color.cyan;
+                }
+                avatar.transform.localScale = Vector3.one * 1.2f;
+
+                MelonLoader.MelonLogger.Msg($"[MP] Spawned remote avatar: {tag}");
             }
+
+            // update transform each tick
             avatar.transform.position = pos;
             avatar.transform.rotation = rot;
-        }
-    }
 }
