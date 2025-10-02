@@ -5,8 +5,10 @@ using UnityEngine.SceneManagement;
 using Megabonk.Multiplayer.HarmonyPatches;
 using Megabonk.Multiplayer.Net;
 using Megabonk.Multiplayer.UI;
+using Steamworks;
+using Il2CppInterop.Runtime.Injection; // <<< NEW
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.4.0", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.4.1", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -26,7 +28,19 @@ namespace Megabonk.Multiplayer
             _harmony = new HarmonyLib.Harmony("cb.megabonk.multiplayer");
             _harmony.PatchAll();
 
-            MpOverlay.Boot(); // overlay
+            // --- Register managed MonoBehaviour types with Il2Cpp BEFORE AddComponent ---
+            try
+            {
+                ClassInjector.RegisterTypeInIl2Cpp<MpOverlay>();
+            }
+            catch (System.Exception ex)
+            {
+                // harmless if it's already registered; log for visibility
+                MelonLogger.Msg($"[MP] Type registration note: {ex.Message}");
+            }
+
+            // Boot overlay (AddComponent after registration)
+            MpOverlay.Boot();
 
             InitSteam();
 
