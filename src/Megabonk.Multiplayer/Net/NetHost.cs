@@ -1,6 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using MelonLoader;
 using Steamworks;
+using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Megabonk.Multiplayer.Net
 {
@@ -8,13 +12,15 @@ namespace Megabonk.Multiplayer.Net
     {
         public static NetHost Instance { get; private set; }
 
-        HSteamListenSocket _listen;
-        readonly List<HSteamNetConnection> _clients = new List<HSteamNetConnection>();
-        readonly Dictionary<HSteamNetConnection, CSteamID> _clientIds = new Dictionary<HSteamNetConnection, CSteamID>();
-        Callback<SteamNetConnectionStatusChangedCallback_t> _onConnChanged;
-        float _stateTimer;
-        byte[] _rx;
-        bool _everyoneReady;
+        private readonly Dictionary<CSteamID, HSteamNetConnection> _conns = new();
+        private readonly Dictionary<CSteamID, bool> _ready = new();
+        private readonly MemoryStream _ms = new MemoryStream(256);
+        private readonly BinaryWriter _w;
+        private float _lastSendTime;
+
+        private int _seed = 0;
+
+        public bool ReadySelf { get; private set; }
 
         public static void StartListening()
         {
@@ -23,161 +29,190 @@ namespace Megabonk.Multiplayer.Net
             Instance.Init();
         }
 
-        void Init()
+        private NetHost()
         {
-            _listen = NetCommon.ListenP2P();
-            _onConnChanged = Callback<SteamNetConnectionStatusChangedCallback_t>.Create(OnConnChanged);
-            MelonLoader.MelonLogger.Msg("NetHost: listening P2P");
+            _w = new BinaryWriter(_ms);
+        }
+
+        private void Init()
+        {
+            MelonLogger.Msg("[Megabonk Multiplayer] NetHost: listening P2P");
+            SteamNetworkingUtils.InitRelayNetworkAccess();
+
+            var cfg = new SteamNetworkingConfigValue_t[0];
+            var ident = new SteamNetworkingIdentity();
+            ident.Clear();
+
+            // Listen socket for P2P connections
+            var iface = SteamNetworkingSockets.CreateListenSocketP2P(0, cfg.Length, cfg);
+            // We rely on Lobby + ConnectionStatusChanged callback to accept peers
+            // (this hook is already set in SteamLobby.cs)
+        }
+
+        public void OnNewConnection(CSteamID peer, HSteamNetConnection hconn)
+        {
+            if (_conns.ContainsKey(peer)) return;
+            _conns[peer] = hconn;
+            _ready[peer] = false;
+            MelonLogger.Msg($"[MP][Host] Peer connected: {peer.m_SteamID}");
+            SendHello(hconn);
+            BroadcastReadySummary();
+        }
+
+        public void OnDisconnect(CSteamID peer)
+        {
+            if (_conns.Remove(peer))
+                MelonLogger.Msg($"[MP][Host] Peer disconnected: {peer.m_SteamID}");
+            _ready.Remove(peer);
+            BroadcastReadySummary();
         }
 
         public void Shutdown()
         {
-            foreach (var c in _clients)
-                SteamNetworkingSockets.CloseConnection(c, 0, "host shutdown", false);
-            _clients.Clear();
-            _clientIds.Clear();
-
-            if (_listen.m_HSteamListenSocket != 0)
-                SteamNetworkingSockets.CloseListenSocket(_listen);
-            _listen = default;
-
-            _onConnChanged = null;
+            foreach (var kv in _conns)
+                SteamNetworkingSockets.CloseConnection(kv.Value, 1000, "host shutdown", false);
+            _conns.Clear();
+            _ready.Clear();
             Instance = null;
         }
 
-        static string StateName(ESteamNetworkingConnectionState s) => s.ToString();
-
-        void LogConnInfo(string who, HSteamNetConnection h, SteamNetConnectionInfo_t info)
+        // ---- READY ----
+        public void ToggleReady()
         {
-            MelonLoader.MelonLogger.Msg($"{who}: state={StateName(info.m_eState)} endReason={info.m_eEndReason} debug='{info.m_szEndDebug}' from={info.m_identityRemote.GetSteamID()}");
+            ReadySelf = !ReadySelf;
+            MelonLogger.Msg($"[MP][Host] Ready = {ReadySelf}");
+            BroadcastReadySummary();
         }
 
-        void OnConnChanged(SteamNetConnectionStatusChangedCallback_t ev)
+        public (int ready, int total) GetReadyCounts()
         {
-            var info = ev.m_info;
-            LogConnInfo("Host.ConnChanged", ev.m_hConn, info);
-
-            switch (info.m_eState)
+            int ready = ReadySelf ? 1 : 0;
+            int total = 1; // include host
+            foreach (var kv in _ready)
             {
-                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connecting:
-                    SteamNetworkingSockets.AcceptConnection(ev.m_hConn);
+                total++;
+                if (kv.Value) ready++;
+            }
+            return (ready, total);
+        }
+
+        public bool AllReady()
+        {
+            foreach (var kv in _ready)
+                if (!kv.Value) return false;
+            return ReadySelf && true;
+        }
+
+        private void BroadcastReadySummary()
+        {
+            // Host echoes each client's readiness back to them? For now just log counts.
+            var (r, t) = GetReadyCounts();
+            MelonLogger.Msg($"[MP][Host] Ready {r}/{t}");
+            // (Optional: send to clients if you want them to see others' readiness)
+        }
+
+        public void OnMsg(CSteamID from, Op op, BinaryReader r)
+        {
+            switch (op)
+            {
+                case Op.Hello:
+                    // handled in SteamLobby; not expected here
                     break;
-                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connected:
-                    _clients.Add(ev.m_hConn);
-                    _clientIds[ev.m_hConn] = info.m_identityRemote.GetSteamID();
-                    SendHello(ev.m_hConn);
+                case Op.Ready:
+                {
+                    bool val = r.ReadBoolean();
+                    _ready[from] = val;
+                    MelonLogger.Msg($"[MP][Host] Client {from.m_SteamID} Ready={val}");
+                    BroadcastReadySummary();
                     break;
-                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ClosedByPeer:
-                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
-                    _clients.Remove(ev.m_hConn);
-                    _clientIds.Remove(ev.m_hConn);
-                    SteamNetworkingSockets.CloseConnection(ev.m_hConn, 0, "disconnect", false);
+                }
+                default:
                     break;
             }
+        }
+
+        // ---- LOAD / SEED ----
+        public void StartCoop(string sceneName)
+        {
+            // Choose/compute a seed and sync it
+            _seed = (int)((DateTime.UtcNow.Ticks ^ (long)SteamUser.GetSteamID().m_SteamID) & 0x7fffffff);
+            UnityEngine.Random.InitState(_seed);
+
+            // Tell clients first (seed), then scene
+            foreach (var kv in _conns)
+            {
+                SendSeed(kv.Value, _seed);
+                SendLoadLevel(kv.Value, sceneName);
+            }
+
+            // Load locally last
+            MelonLogger.Msg($"[MP][Host] Starting co-op: scene='{sceneName}', seed={_seed}");
+            SceneManager.LoadScene(sceneName);
         }
 
         public void BroadcastLoadLevel(string sceneName)
         {
-            using (var ms = new MemoryStream())
-            using (var w = new BinaryWriter(ms))
-            {
-                MsgIO.WriteHeader(w, Op.LoadLevel);
-                w.Write(sceneName);
-                var bytes = ms.ToArray();
-                foreach (var c in _clients) NetCommon.Send(c, bytes, true);
-            }
-            MelonLoader.MelonLogger.Msg($"Host: told clients to load scene '{sceneName}'");
+            foreach (var kv in _conns)
+                SendLoadLevel(kv.Value, sceneName);
         }
 
-        public void ToggleReady()
+        private void SendHello(HSteamNetConnection to)
         {
-            _everyoneReady = !_everyoneReady;
-            BroadcastReady(_everyoneReady);
+            _ms.Position = 0; _ms.SetLength(0);
+            MsgIO.WriteHeader(_w, Op.Hello);
+            _w.Flush();
+            SendMsg(to, _ms);
         }
 
-        void SendHello(HSteamNetConnection c)
+        private void SendSeed(HSteamNetConnection to, int seed)
         {
-            using (var ms = new MemoryStream())
-            using (var w = new BinaryWriter(ms))
-            {
-                MsgIO.WriteHeader(w, Op.Hello);
-                w.Write(SteamFriends.GetPersonaName());
-                NetCommon.Send(c, ms.ToArray(), true);
-            }
+            _ms.Position = 0; _ms.SetLength(0);
+            MsgIO.WriteHeader(_w, Op.SeedSync);
+            _w.Write(seed);
+            _w.Flush();
+            SendMsg(to, _ms);
         }
 
-        void BroadcastReady(bool ready)
+        private void SendLoadLevel(HSteamNetConnection to, string sceneName)
         {
-            using (var ms = new MemoryStream())
-            using (var w = new BinaryWriter(ms))
-            {
-                MsgIO.WriteHeader(w, Op.Ready);
-                w.Write(ready);
-                var bytes = ms.ToArray();
-                foreach (var c in _clients) NetCommon.Send(c, bytes, true);
-            }
+            _ms.Position = 0; _ms.SetLength(0);
+            MsgIO.WriteHeader(_w, Op.LoadLevel);
+            MsgIO.WriteString(_w, sceneName);
+            _w.Flush();
+            SendMsg(to, _ms);
         }
 
-        void BroadcastPlayerState()
+        private void SendMsg(HSteamNetConnection to, MemoryStream ms)
         {
-            if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot))
-                return;
-
-            using (var ms = new MemoryStream())
-            using (var w = new BinaryWriter(ms))
-            {
-                MsgIO.WriteHeader(w, Op.PlayerState);
-                MsgIO.WriteVec3(w, HarmonyPatches.GameHooks.LastPos);
-                MsgIO.WriteQuat(w, rot);
-                var bytes = ms.ToArray();
-                foreach (var c in _clients) NetCommon.Send(c, bytes, false);
-            }
+            var len = (int)ms.Length;
+            var buf = ms.GetBuffer();
+            var send = new SteamNetworkingMessage_t();
+            send.m_pData = System.Runtime.InteropServices.Marshal.UnsafeAddrOfPinnedArrayElement(buf, 0);
+            send.m_cbSize = len;
+            send.m_conn = to;
+            send.m_nFlags = 0;
+            SteamNetworkingSockets.SendMessages(1, new[] { send }, out var _);
         }
 
         public void Tick()
         {
-            foreach (var c in _clients.ToArray())
-            {
-                int got = NetCommon.Receive(c, ref _rx);
-                if (got > 0) ProcessPacket(c, _rx, got);
-            }
+            // host may also send periodic PlayerState if you want host’s avatar on clients
+            var now = Time.unscaledTime;
+            if (now - _lastSendTime < 0.1f) return; // ~10 Hz
+            _lastSendTime = now;
 
-            _stateTimer += UnityEngine.Time.deltaTime;
-            if (_stateTimer >= 0.1f)
-            {
-                _stateTimer = 0f;
-                BroadcastPlayerState();
-            }
-        }
+            if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot)) return;
+            var pos = HarmonyPatches.GameHooks.LastPos;
 
-        void ProcessPacket(HSteamNetConnection from, byte[] data, int len)
-        {
-            using (var ms = new MemoryStream(data, 0, len))
-            using (var r = new BinaryReader(ms))
+            // broadcast PlayerState to all
+            foreach (var kv in _conns)
             {
-                if (!MsgIO.ReadHeader(r, out var op)) return;
-                switch (op)
-                {
-                    case Op.Hello:
-                    {
-                        var name = r.ReadString();
-                        MelonLoader.MelonLogger.Msg($"Host: got HELLO from {_clientIds[from]} ({name})");
-                        break;
-                    }
-                    case Op.PlayerState:
-                    {
-                        var pos = MsgIO.ReadVec3(r);
-                        var rot = MsgIO.ReadQuat(r);
-                        HarmonyPatches.GameHooks.ApplyRemotePlayerState(_clientIds[from], pos, rot);
-                        break;
-                    }
-                    case Op.Ready:
-                    {
-                        bool ready = r.ReadBoolean();
-                        MelonLoader.MelonLogger.Msg($"Client ready: {ready}");
-                        break;
-                    }
-                }
+                _ms.Position = 0; _ms.SetLength(0);
+                MsgIO.WriteHeader(_w, Op.PlayerState);
+                MsgIO.WriteVec3(_w, pos);
+                MsgIO.WriteQuat(_w, rot);
+                _w.Flush();
+                SendMsg(kv.Value, _ms);
             }
         }
     }
