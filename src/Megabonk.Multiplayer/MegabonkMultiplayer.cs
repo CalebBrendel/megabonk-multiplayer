@@ -2,11 +2,11 @@ using MelonLoader;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Megabonk.Multiplayer.HarmonyPatches;   // GameHooks
+using Megabonk.Multiplayer.HarmonyPatches;
 using Megabonk.Multiplayer.Net;
-using Megabonk.Multiplayer.Debugging;        // SceneDumper (F5)
+using Megabonk.Multiplayer.UI;
 
-[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.3.4", "CalebB")]
+[assembly: MelonInfo(typeof(Megabonk.Multiplayer.MegabonkMultiplayer), "Megabonk Multiplayer", "0.4.0", "CalebB")]
 [assembly: MelonGame(null, "Megabonk")]
 
 namespace Megabonk.Multiplayer
@@ -15,8 +15,6 @@ namespace Megabonk.Multiplayer
     {
         private static bool _steamOk;
         private HarmonyLib.Harmony _harmony;
-
-        // scene-change tracker (avoids UnityAction<T1,T2> AOT issues)
         private static int _lastSceneIndex = -1;
         private static string _lastSceneName = null;
 
@@ -27,6 +25,8 @@ namespace Megabonk.Multiplayer
             MelonLogger.Msg("Megabonk Multiplayer init...");
             _harmony = new HarmonyLib.Harmony("cb.megabonk.multiplayer");
             _harmony.PatchAll();
+
+            MpOverlay.Boot(); // overlay
 
             InitSteam();
 
@@ -69,7 +69,7 @@ namespace Megabonk.Multiplayer
 
             Steamworks.SteamAPI.RunCallbacks();
 
-            // Scene change poll (replaces SceneManager.sceneLoaded subscription)
+            // Scene change poll -> clear/rebind via GameHooks
             var scn = SceneManager.GetActiveScene();
             if (scn.buildIndex != _lastSceneIndex || scn.name != _lastSceneName)
             {
@@ -79,11 +79,11 @@ namespace Megabonk.Multiplayer
             }
 
             // Hotkeys
-            if (Input.GetKeyDown(KeyCode.F9))  SteamLobby.HostLobby();
+            if (Input.GetKeyDown(KeyCode.F2)) MpOverlay.Toggle();
+            if (Input.GetKeyDown(KeyCode.F9)) SteamLobby.HostLobby();
             if (Input.GetKeyDown(KeyCode.F10)) SteamLobby.ShowInviteOverlay();
             if (Input.GetKeyDown(KeyCode.F11)) SteamLobby.LeaveLobby();
 
-            // Host: broadcast current scene to clients
             if (Input.GetKeyDown(KeyCode.F6) && IsHost && NetHost.Instance != null)
             {
                 var scene = scn.name;
@@ -91,23 +91,15 @@ namespace Megabonk.Multiplayer
                 NetHost.Instance.BroadcastLoadLevel(scene);
             }
 
-                // Manual player bind if auto-bind missed it
             if (Input.GetKeyDown(KeyCode.F8))
             {
                 var ok = GameHooks.ForceRebind(verbose: true);
                 if (!ok) MelonLogger.Msg("[MP] Rebind attempt didn't find a player yet. Try again after the scene fully loads.");
             }
 
-            // Scene dumper (find the real player root) — now on F5
             if (Input.GetKeyDown(KeyCode.F5))
             {
-                SceneDumper.Dump(3); // raise to 4–5 for deeper trees
-            }
-
-            if (Input.GetKeyDown(KeyCode.F7))
-            {
-                if (IsHost) NetHost.Instance?.ToggleReady();
-                else NetClient.Instance?.ToggleReady();
+                Debugging.SceneDumper.Dump(3);
             }
 
             if (IsHost) NetHost.Instance?.Tick(); else NetClient.Instance?.Tick();
