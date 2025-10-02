@@ -12,7 +12,7 @@ namespace Megabonk.Multiplayer.Net
         PlayerState = 4,
         Chat = 5,
         Goodbye = 6,
-        LoadLevel = 7   // NEW: host tells clients to load a scene
+        LoadLevel = 7, // NEW: host tells clients which scene to load
     }
 
     public static class MsgIO
@@ -34,21 +34,26 @@ namespace Megabonk.Multiplayer.Net
             return true;
         }
 
-        public static void WriteVec3(BinaryWriter w, Vector3 v)
+        // --- helpers ---
+        public static void WriteVec3(BinaryWriter w, Vector3 v){ w.Write(v.x); w.Write(v.y); w.Write(v.z); }
+        public static Vector3 ReadVec3(BinaryReader r){ return new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle()); }
+        public static void WriteQuat(BinaryWriter w, Quaternion q){ w.Write(q.x); w.Write(q.y); w.Write(q.z); w.Write(q.w); }
+        public static Quaternion ReadQuat(BinaryReader r){ return new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()); }
+
+        public static void WriteString(BinaryWriter w, string s)
         {
-            w.Write(v.x); w.Write(v.y); w.Write(v.z);
+            if (s == null) { w.Write((int)0); return; }
+            var bytes = System.Text.Encoding.UTF8.GetBytes(s);
+            w.Write(bytes.Length);
+            w.Write(bytes);
         }
-        public static Vector3 ReadVec3(BinaryReader r)
+
+        public static string ReadString(BinaryReader r)
         {
-            return new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
-        }
-        public static void WriteQuat(BinaryWriter w, Quaternion q)
-        {
-            w.Write(q.x); w.Write(q.y); w.Write(q.z); w.Write(q.w);
-        }
-        public static Quaternion ReadQuat(BinaryReader r)
-        {
-            return new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+            int len = r.ReadInt32();
+            if (len <= 0) return string.Empty;
+            var bytes = r.ReadBytes(len);
+            return System.Text.Encoding.UTF8.GetString(bytes);
         }
     }
 }
