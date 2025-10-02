@@ -1,22 +1,47 @@
 using System.Text;
 using MelonLoader;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace Megabonk.Multiplayer.Debugging
 {
+    /// <summary>
+    /// IL2CPP-safe dumper: avoids stripped reflection APIs.
+    /// Dumps only the Camera.main root subtree and any currently bound LocalPlayer info.
+    /// </summary>
     public static class SceneDumper
     {
         public static void Dump(int maxDepth = 3)
         {
-            var scn = SceneManager.GetActiveScene();
-            var roots = GetSceneRootsSafe(scn);
-            MelonLogger.Msg($"[DUMP] Scene '{scn.name}' roots={roots.Length}");
+            // 1) Dump camera path and a small subtree
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                MelonLogger.Msg("[DUMP] MainCamera not found.");
+            }
+            else
+            {
+                var t = cam.transform;
+                MelonLogger.Msg($"[DUMP] MainCamera path: {GetPath(t)}");
 
-            for (int i = 0; i < roots.Length; i++)
-                DumpTransform(roots[i].transform, 0, maxDepth);
+                // Climb to camera root and dump a few levels of that subtree
+                var root = t;
+                while (root.parent != null) root = root.parent;
 
-            LogCameraChain();
+                MelonLogger.Msg($"[DUMP] Dumping camera root subtree: '{root.name}' (depth {maxDepth})");
+                DumpTransform(root, 0, maxDepth);
+            }
+
+            // 2) If we have a bound LocalPlayer, log its path + a quick subtree
+            var lp = HarmonyPatches.GameHooks.LocalPlayer;
+            if (lp != null)
+            {
+                MelonLogger.Msg($"[DUMP] LocalPlayer bound: '{lp.name}' path: {GetPath(lp)}");
+                DumpTransform(lp, 0, 2);
+            }
+            else
+            {
+                MelonLogger.Msg("[DUMP] LocalPlayer is not bound yet.");
+            }
         }
 
         static void DumpTransform(Transform t, int depth, int maxDepth)
@@ -26,6 +51,7 @@ namespace Megabonk.Multiplayer.Debugging
             for (int i = 0; i < depth; i++) sb.Append("  ");
             var go = t.gameObject;
 
+            // Component names (short)
             var comps = go.GetComponents<Component>();
             sb.Append("- ").Append(go.name).Append(" [");
             for (int i = 0; i < comps.Length; i++)
@@ -38,6 +64,7 @@ namespace Megabonk.Multiplayer.Debugging
             }
             sb.Append(']');
 
+            // Heuristic flag
             var lower = go.name.ToLowerInvariant();
             if (lower.Contains("player") || lower.Contains("pawn") || lower.Contains("character"))
                 sb.Append("  <-- LIKELY PLAYER");
@@ -49,27 +76,6 @@ namespace Megabonk.Multiplayer.Debugging
                 DumpTransform(t.GetChild(i), depth + 1, maxDepth);
         }
 
-        static void LogCameraChain()
-        {
-            var cam = Camera.main;
-            if (cam == null)
-            {
-                MelonLogger.Msg("[DUMP] MainCamera not found.");
-                return;
-            }
-
-            var t = cam.transform;
-            MelonLogger.Msg($"[DUMP] MainCamera path: {GetPath(t)}");
-            var p = t.parent;
-            int i = 0;
-            while (p != null && i < 4)
-            {
-                MelonLogger.Msg($"[DUMP] parent[{i}]: {p.name}");
-                p = p.parent;
-                i++;
-            }
-        }
-
         static string GetPath(Transform t)
         {
             var sb = new StringBuilder();
@@ -77,46 +83,6 @@ namespace Megabonk.Multiplayer.Debugging
             for (var x = t; x != null; x = x.parent) stack.Add(x);
             for (int i = stack.Count - 1; i >= 0; i--) sb.Append('/').Append(stack[i].name);
             return sb.ToString();
-        }
-
-        // IL2CPP-safe roots using Resources.FindObjectsOfTypeAll(typeof(Transform))
-        static GameObject[] GetSceneRootsSafe(Scene scn)
-        {
-            try
-            {
-                var objs = Resources.FindObjectsOfTypeAll(typeof(Transform));
-                int count = 0;
-                for (int i = 0; i < objs.Length; i++)
-                {
-                    var t = objs[i] as Transform;
-                    if (t == null) continue;
-                    var go = t.gameObject;
-                    if (t.parent == null &&
-                        go.scene.handle == scn.handle &&
-                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
-                        count++;
-                }
-                if (count == 0) return System.Array.Empty<GameObject>();
-
-                var result = new GameObject[count];
-                int idx = 0;
-                for (int i = 0; i < objs.Length; i++)
-                {
-                    var t = objs[i] as Transform;
-                    if (t == null) continue;
-                    var go = t.gameObject;
-                    if (t.parent == null &&
-                        go.scene.handle == scn.handle &&
-                        (go.hideFlags & (HideFlags.HideInHierarchy | HideFlags.HideAndDontSave)) == 0)
-                        result[idx++] = go;
-                }
-                return result;
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Error($"[DUMP] GetSceneRootsSafe failed: {ex.GetType().Name}: {ex.Message}");
-                return System.Array.Empty<GameObject>();
-            }
         }
     }
 }
