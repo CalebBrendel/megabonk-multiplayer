@@ -1,105 +1,163 @@
-using Steamworks;
+using System;
 using MelonLoader;
+using Steamworks;
+using Megabonk.Multiplayer.Net;
 
 namespace Megabonk.Multiplayer
 {
     public static class SteamLobby
     {
         public static bool IsHost { get; private set; }
-        public static CSteamID CurrentLobby { get; private set; }
+        public static CSteamID LobbyId { get; private set; }
         public static CSteamID HostId { get; private set; }
 
-        public static event System.Action<bool, CSteamID, CSteamID> OnLobbyEntered;
-        public static event System.Action OnLobbyLeft;
+        public static event Action<bool, CSteamID, CSteamID> OnLobbyEntered; // (isHost, lobby, hostId)
+        public static event Action OnLobbyLeft;
 
-        static Callback<GameLobbyJoinRequested_t> _onLobbyJoinRequested;
-        static Callback<LobbyEnter_t> _onLobbyEntered;
-        static CallResult<LobbyCreated_t> _onLobbyCreated;
+        private static Callback<LobbyCreated_t> _cbLobbyCreated;
+        private static Callback<GameLobbyJoinRequested_t> _cbJoinRequested;
+        private static Callback<LobbyEnter_t> _cbLobbyEnter;
+        private static Callback<SteamNetConnectionStatusChangedCallback_t> _cbConnChanged;
 
         public static void Init()
         {
-            if (!SteamAPI.IsSteamRunning())
-            {
-                MelonLogger.Error("SteamLobby.Init: Steam is not running or SteamAPI not initialized.");
-                return;
-            }
+            _cbLobbyCreated  = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
+            _cbJoinRequested = Callback<GameLobbyJoinRequested_t>.Create(OnJoinRequested);
+            _cbLobbyEnter    = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
+            _cbConnChanged   = Callback<SteamNetConnectionStatusChangedCallback_t>.Create(OnConnChanged);
 
-            _onLobbyJoinRequested = Callback<GameLobbyJoinRequested_t>.Create(OnLobbyJoinRequested);
-            _onLobbyEntered       = Callback<LobbyEnter_t>.Create(OnLobbyEnteredCb);
-            _onLobbyCreated       = CallResult<LobbyCreated_t>.Create(OnLobbyCreatedCb);
-
-            MelonLogger.Msg($"SteamLobby.Init: callbacks ready? created={_onLobbyCreated != null}, joinReq={_onLobbyJoinRequested != null}, entered={_onLobbyEntered != null}");
+            MelonLogger.Msg("[Megabonk Multiplayer] SteamLobby.Init: callbacks ready? created={0} joinReq={1} entered={2}",
+                _cbLobbyCreated != null, _cbJoinRequested != null, _cbLobbyEnter != null);
         }
 
         public static void Shutdown()
         {
-            LeaveLobby();
-            _onLobbyJoinRequested = null;
-            _onLobbyEntered = null;
-            _onLobbyCreated = null;
+            if (LobbyId.IsValid())
+            {
+                SteamMatchmaking.LeaveLobby(LobbyId);
+                LobbyId = CSteamID.Nil;
+            }
+            IsHost = false;
+            HostId = CSteamID.Nil;
         }
 
-        public static void HostLobby(int maxPlayers = 4, ELobbyType type = ELobbyType.k_ELobbyTypeFriendsOnly)
+        public static void HostLobby()
         {
-            if (!SteamAPI.IsSteamRunning())
-            {
-                MelonLogger.Error("HostLobby: SteamAPI not running; abort.");
-                return;
-            }
-            if (_onLobbyCreated == null)
-            {
-                MelonLogger.Error("HostLobby: _onLobbyCreated is null; did Init() run?");
-                return;
-            }
-
-            MelonLogger.Msg("HostLobby: creating lobby…");
-            var call = SteamMatchmaking.CreateLobby(type, maxPlayers);
-            _onLobbyCreated.Set(call);
-        }
-
-        public static void LeaveLobby()
-        {
-            if (CurrentLobby.IsValid())
-            {
-                SteamMatchmaking.LeaveLobby(CurrentLobby);
-                CurrentLobby = default;
-                OnLobbyLeft?.Invoke();
-            }
+            MelonLogger.Msg("[Megabonk Multiplayer] HostLobby: creating lobby…");
+            SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, 4);
         }
 
         public static void ShowInviteOverlay()
         {
-            if (CurrentLobby.IsValid())
-                SteamFriends.ActivateGameOverlayInviteDialog(CurrentLobby);
-        }
-
-        static void OnLobbyCreatedCb(LobbyCreated_t data, bool ioFail)
-        {
-            if (ioFail || data.m_eResult != EResult.k_EResultOK)
+            if (!LobbyId.IsValid())
             {
-                MelonLogger.Error($"Lobby creation failed: {data.m_eResult}");
+                MelonLogger.Warning("[MP] Cannot invite: no lobby.");
                 return;
             }
-            CurrentLobby = new CSteamID(data.m_ulSteamIDLobby);
-            IsHost = true;
-            HostId = SteamUser.GetSteamID();
-            SteamMatchmaking.SetLobbyJoinable(CurrentLobby, true);
-            SteamMatchmaking.SetLobbyOwner(CurrentLobby, HostId);
-            SteamFriends.SetRichPresence("connect", CurrentLobby.m_SteamID.ToString());
-            ShowInviteOverlay();
+            SteamFriends.ActivateGameOverlayInviteDialog(LobbyId);
         }
 
-        static void OnLobbyEnteredCb(LobbyEnter_t data)
+        public static void LeaveLobby()
         {
-            CurrentLobby = new CSteamID(data.m_ulSteamIDLobby);
-            HostId = SteamMatchmaking.GetLobbyOwner(CurrentLobby);
-            IsHost = (HostId == SteamUser.GetSteamID());
-            OnLobbyEntered?.Invoke(IsHost, CurrentLobby, HostId);
+            if (!LobbyId.IsValid()) return;
+            SteamMatchmaking.LeaveLobby(LobbyId);
+            LobbyId = CSteamID.Nil;
+            IsHost = false;
+            HostId = CSteamID.Nil;
+            OnLobbyLeft?.Invoke();
+            MelonLogger.Msg("[Megabonk Multiplayer] Lobby left");
         }
 
-        static void OnLobbyJoinRequested(GameLobbyJoinRequested_t data)
+        // ---------- Callbacks ----------
+        private static void OnLobbyCreated(LobbyCreated_t ev)
         {
-            SteamMatchmaking.JoinLobby(data.m_steamIDLobby);
+            if (ev.m_eResult != EResult.k_EResultOK)
+            {
+                MelonLogger.Error("[MP] Lobby create failed: {0}", ev.m_eResult);
+                return;
+            }
+
+            LobbyId = new CSteamID(ev.m_ulSteamIDLobby);
+            IsHost  = true;
+            HostId  = SteamUser.GetSteamID();
+
+            SteamMatchmaking.SetLobbyData(LobbyId, "name", SteamFriends.GetPersonaName() + "'s Lobby");
+            SteamMatchmaking.SetLobbyJoinable(LobbyId, true);
+
+            MelonLogger.Msg("[Megabonk Multiplayer] Lobby created: {0}, host={1}", LobbyId.m_SteamID, HostId.m_SteamID);
+        }
+
+        private static void OnJoinRequested(GameLobbyJoinRequested_t ev)
+        {
+            MelonLogger.Msg("[Megabonk Multiplayer] Join requested to lobby {0} from {1}",
+                ev.m_steamIDLobby.m_SteamID, ev.m_steamIDFriend.m_SteamID);
+            SteamMatchmaking.JoinLobby(ev.m_steamIDLobby);
+        }
+
+        private static void OnLobbyEnter(LobbyEnter_t ev)
+        {
+            LobbyId = new CSteamID(ev.m_ulSteamIDLobby);
+            var owner = SteamMatchmaking.GetLobbyOwner(LobbyId);
+            HostId = owner;
+            IsHost = owner == SteamUser.GetSteamID();
+
+            MelonLogger.Msg("[Megabonk Multiplayer] Lobby entered: {0}, host={1}", LobbyId.m_SteamID, HostId.m_SteamID);
+
+            // Make sure relay is available for this session.
+            SteamNetworkingUtils.InitRelayNetworkAccess();
+
+            OnLobbyEntered?.Invoke(IsHost, LobbyId, HostId);
+        }
+
+        private static void OnConnChanged(SteamNetConnectionStatusChangedCallback_t ev)
+        {
+            var state = ev.m_info.m_eState;
+            var hconn = ev.m_hConn;
+
+            // Try resolve remote SteamID for logs and mapping
+            CSteamID remote = new CSteamID(0);
+            try
+            {
+                SteamNetConnectionInfo_t info;
+                if (SteamNetworkingSockets.GetConnectionInfo(hconn, out info))
+                    remote = info.m_identityRemote.GetSteamID();
+            }
+            catch { /* best-effort */ }
+
+            MelonLogger.Msg("[Megabonk Multiplayer] ConnChanged: state={0} reason={1} from={2} debug='{3}'",
+                state, ev.m_info.m_eEndReason, remote.m_SteamID, ev.m_info.m_szEndDebug);
+
+            switch (state)
+            {
+                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connecting:
+                    // Host must accept inbound connections or they stick in Connecting forever.
+                    if (IsHost)
+                    {
+                        MelonLogger.Msg("[Megabonk Multiplayer] Host accepting connection from {0}", remote.m_SteamID);
+                        var res = SteamNetworkingSockets.AcceptConnection(hconn);
+                        if (res != EResult.k_EResultOK)
+                            MelonLogger.Error("[Megabonk Multiplayer] AcceptConnection failed: {0}", res);
+                    }
+                    break;
+
+                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_Connected:
+                    if (IsHost && remote.m_SteamID != 0)
+                    {
+                        NetHost.Instance?.OnNewConnection(remote, hconn);
+                    }
+                    break;
+
+                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ClosedByPeer:
+                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
+                case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_None:
+                    if (IsHost && remote.m_SteamID != 0)
+                    {
+                        NetHost.Instance?.OnDisconnect(remote);
+                    }
+                    // Ensure handle is closed either way
+                    SteamNetworkingSockets.CloseConnection(hconn, 0, "cleanup", false);
+                    break;
+            }
         }
     }
 }
