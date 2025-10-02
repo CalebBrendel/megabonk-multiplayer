@@ -6,6 +6,7 @@ using MelonLoader;
 using Steamworks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Megabonk.Multiplayer.HarmonyPatches; // GameHooks
 
 namespace Megabonk.Multiplayer.Net
 {
@@ -15,11 +16,12 @@ namespace Megabonk.Multiplayer.Net
 
         private readonly Dictionary<CSteamID, HSteamNetConnection> _conns = new();
         private readonly Dictionary<CSteamID, bool> _ready = new();
+
         private readonly MemoryStream _ms = new MemoryStream(256);
         private readonly BinaryWriter _w;
-        private float _lastSendTime;
 
-        private int _seed = 0;
+        private float _lastSendTime;
+        private int _seed;
 
         public bool ReadySelf { get; private set; }
 
@@ -39,7 +41,7 @@ namespace Megabonk.Multiplayer.Net
         {
             MelonLogger.Msg("[Megabonk Multiplayer] NetHost: listening P2P");
             SteamNetworkingUtils.InitRelayNetworkAccess();
-            // The actual accept happens via SteamLobby's connection status callback.
+            // Accept/connection events are handled by SteamLobby and forwarded via OnNewConnection/OnDisconnect.
         }
 
         public void OnNewConnection(CSteamID peer, HSteamNetConnection hconn)
@@ -69,7 +71,7 @@ namespace Megabonk.Multiplayer.Net
             Instance = null;
         }
 
-        // ---- READY ----
+        // ---------------- READY ----------------
         public void ToggleReady()
         {
             ReadySelf = !ReadySelf;
@@ -93,15 +95,17 @@ namespace Megabonk.Multiplayer.Net
         {
             foreach (var kv in _ready)
                 if (!kv.Value) return false;
-            return ReadySelf && true;
+            return ReadySelf;
         }
 
         private void BroadcastReadySummary()
         {
             var (r, t) = GetReadyCounts();
             MelonLogger.Msg($"[MP][Host] Ready {r}/{t}");
+            // (Optional: send to clients if you want them to see global readiness)
         }
 
+        // --------------- MESSAGES ---------------
         public void OnMsg(CSteamID from, Op op, BinaryReader r)
         {
             switch (op)
@@ -114,15 +118,30 @@ namespace Megabonk.Multiplayer.Net
                     BroadcastReadySummary();
                     break;
                 }
+                case Op.PlayerState:
+                {
+                    // client -> host: update that client's avatar on the host
+                    var pos = MsgIO.ReadVec3(r);
+                    var rot = MsgIO.ReadQuat(r);
+                    GameHooks.ApplyRemotePlayerState(from, pos, rot);
+
+                    // NOTE: If you later want clients to see each other (not just host),
+                    // add a new message format that includes the sender's SteamID and relay here.
+                    break;
+                }
+                default:
+                    break;
             }
         }
 
-        // ---- LOAD / SEED ----
+        // --------------- CO-OP START ---------------
         public void StartCoop(string sceneName)
         {
+            // Derive a seed and sync it so procedural content matches.
             _seed = (int)((DateTime.UtcNow.Ticks ^ (long)SteamUser.GetSteamID().m_SteamID) & 0x7fffffff);
             UnityEngine.Random.InitState(_seed);
 
+            // Tell clients: seed first, then scene
             foreach (var kv in _conns)
             {
                 SendSeed(kv.Value, _seed);
@@ -139,6 +158,7 @@ namespace Megabonk.Multiplayer.Net
                 SendLoadLevel(kv.Value, sceneName);
         }
 
+        // --------------- SEND HELPERS ---------------
         private void SendHello(HSteamNetConnection to)
         {
             _ms.Position = 0; _ms.SetLength(0);
@@ -185,14 +205,15 @@ namespace Megabonk.Multiplayer.Net
             }
         }
 
+        // --------------- TICK (host -> clients) ---------------
         public void Tick()
         {
             var now = Time.unscaledTime;
             if (now - _lastSendTime < 0.1f) return; // ~10 Hz
             _lastSendTime = now;
 
-            if (!HarmonyPatches.GameHooks.TryGetLocalPlayerPos(out var rot)) return;
-            var pos = HarmonyPatches.GameHooks.LastPos;
+            if (!GameHooks.TryGetLocalPlayerPos(out var rot)) return;
+            var pos = GameHooks.LastPos;
 
             foreach (var kv in _conns)
             {
